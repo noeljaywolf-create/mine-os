@@ -1,0 +1,9 @@
+node_modules/
+dist/
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+*.log
+smoke.cjs

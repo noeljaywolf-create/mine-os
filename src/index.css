@@ -1,0 +1,175 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --hairline: rgba(148, 163, 184, 0.14);
+  --hairline-strong: rgba(148, 163, 184, 0.26);
+  --panel: #0f1725;
+  --panel-raised: #141c2b;
+  --console: #070b12;
+  --blue: #2f6feb;
+  --cyan: #2bb3d6;
+  --green: #1e9e5a;
+  --amber: #d98a0b;
+  --red: #d33f3f;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-ink-950 text-ink-100 font-sans;
+    background-image:
+      radial-gradient(1200px 600px at 12% -10%, rgba(47, 111, 235, 0.09), transparent 60%),
+      radial-gradient(900px 500px at 92% 0%, rgba(43, 179, 214, 0.06), transparent 55%);
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    background: rgba(47, 111, 235, 0.35);
+    color: #f1f4f7;
+  }
+
+  *:focus-visible {
+    outline: 1px solid var(--cyan);
+    outline-offset: 2px;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    font: inherit;
+  }
+
+  table {
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #070b12;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #212b3d;
+    border: 2px solid #070b12;
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #3a4658;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply rounded-sm border border-[color:var(--hairline)] bg-ink-850/80 shadow-panel backdrop-blur-[2px];
+  }
+
+  .panel-flat {
+    @apply rounded-sm border border-[color:var(--hairline)] bg-ink-900/60;
+  }
+
+  .label-micro {
+    @apply font-mono text-2xs uppercase tracking-[0.18em] text-ink-300;
+  }
+
+  .num {
+    @apply font-mono tabular-nums;
+  }
+
+  .hairline {
+    border-color: var(--hairline);
+  }
+
+  .grid-bg {
+    background-image:
+      linear-gradient(to right, rgba(148, 163, 184, 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(148, 163, 184, 0.05) 1px, transparent 1px);
+    background-size: 44px 44px;
+  }
+
+  .scanline {
+    background-image: repeating-linear-gradient(
+      0deg,
+      rgba(148, 163, 184, 0.05) 0px,
+      rgba(148, 163, 184, 0.05) 1px,
+      transparent 1px,
+      transparent 4px
+    );
+  }
+
+  .vignette {
+    box-shadow: inset 0 0 120px 30px rgba(7, 11, 18, 0.85);
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* React Flow theme overrides */
+.react-flow {
+  --xy-background-color: transparent;
+  --xy-edge-stroke-default: #2c3748;
+  --xy-edge-stroke-selected-default: #2bb3d6;
+  --xy-connectionline-stroke-default: #2bb3d6;
+  --xy-attribution-background-color: transparent;
+}
+
+.react-flow__attribution {
+  display: none;
+}
+
+.react-flow__controls {
+  box-shadow: none;
+  border: 1px solid var(--hairline);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.react-flow__controls-button {
+  background: #0f1725;
+  border-bottom: 1px solid var(--hairline);
+  fill: #b6c1ce;
+  width: 26px;
+  height: 26px;
+}
+
+.react-flow__controls-button:hover {
+  background: #1a2333;
+}
+
+.react-flow__minimap {
+  background: #0b1220 !important;
+  border: 1px solid var(--hairline);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
