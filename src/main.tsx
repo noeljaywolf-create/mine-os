@@ -56,9 +56,11 @@ function Root() {
   );
 }
 
+const basePath = new URL('.', document.baseURI).pathname.replace(/\/$/, '');
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter>
+    <BrowserRouter basename={basePath || '/'}>
       <Root />
     </BrowserRouter>
   </React.StrictMode>,
