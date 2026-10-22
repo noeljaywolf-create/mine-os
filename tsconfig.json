@@ -17,7 +17,7 @@
     "noFallthroughCasesInSwitch": true,
     "noImplicitOverride": true,
     "exactOptionalPropertyTypes": false,
-    "types": ["vitest/globals", "@testing-library/jest-dom", "node"],
+    "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom", "node"],
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]

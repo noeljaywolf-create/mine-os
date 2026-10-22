@@ -56,7 +56,8 @@ function Root() {
   );
 }
 
-const basePath = new URL('.', document.baseURI).pathname.replace(/\/$/, '');
+const configuredBase = import.meta.env.BASE_URL;
+const basePath = configuredBase.startsWith('/') ? configuredBase.replace(/\/$/, '') : '';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
