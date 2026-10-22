@@ -7,3 +7,4 @@ tsconfig.tsbuildinfo
 !.env.example
 *.log
 smoke.cjs
+live-smoke.cjs
