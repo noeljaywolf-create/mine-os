@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Zap } from 'lucide-react';
 import { MODULE_BY_ID } from '../app/modules';
+import { EngineeringBasis } from '../components/EngineeringBasis';
 import { ModuleHeader, PanelTitle } from '../components/ModuleHeader';
 import { BarChart, TrendChart } from '../components/charts';
 import {
@@ -55,6 +56,7 @@ export function Energy() {
         module={MODULE_BY_ID.energy}
         actions={
           <>
+            <Link to="/app/engineering?view=resilience" className="text-[10px] text-signal-cyanBright">electrical single-line / backup simulator →</Link>
             <Link to="/app/dewatering" className="text-[10px] text-ink-400 hover:text-ink-100">pump duty →</Link>
             <Badge tone={failedFeeders.length ? 'red' : 'green'} dot>
               {failedFeeders.length ? `${failedFeeders.length} supply constraint${failedFeeders.length === 1 ? '' : 's'}` : 'all feeders supplying'}
@@ -67,6 +69,7 @@ export function Energy() {
           <span className="font-mono text-ink-400">tariff {formatMoney(assumptions.energyTariffUSDPerKwh)}/kWh</span>
         </div>
       </ModuleHeader>
+      <div className="my-3 flex flex-wrap gap-2"><EngineeringBasis assetId="site:power" /><EngineeringBasis assetId="site:energy" /></div>
 
       <MetricGrid cols={5}>
         <MetricCell>

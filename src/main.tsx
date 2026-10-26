@@ -24,6 +24,8 @@ import { Telemetry } from './modules/Telemetry';
 import { Decisions } from './modules/Decisions';
 import { Analytics } from './modules/Analytics';
 import { Governance } from './modules/Governance';
+import { EngineeringLab } from './modules/EngineeringLab';
+import { EngineeringErrorBoundary } from './components/EngineeringErrorBoundary';
 
 function Root() {
   const capabilities = useCapabilities();
@@ -48,6 +50,7 @@ function Root() {
           <Route path="decisions" element={<Decisions />} />
           <Route path="analytics" element={<Analytics />} />
           <Route path="governance" element={<Governance />} />
+          <Route path="engineering" element={<EngineeringLab />} />
           <Route path="*" element={<Navigate to="/app" replace />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
@@ -62,7 +65,7 @@ const basePath = configuredBase.startsWith('/') ? configuredBase.replace(/\/$/, 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BrowserRouter basename={basePath || '/'}>
-      <Root />
+      <EngineeringErrorBoundary><Root /></EngineeringErrorBoundary>
     </BrowserRouter>
   </React.StrictMode>,
 );

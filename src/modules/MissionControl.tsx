@@ -203,8 +203,8 @@ export function MissionControl() {
                   <Th>Zone</Th>
                   <Th align="right">Rate</Th>
                   <Th align="right">Operating</Th>
-                  <Th align="right">Lost hours</Th>
-                  <Th align="right">Lost tonnes</Th>
+                  <Th align="right">Foregone hours</Th>
+                  <Th align="right">Foregone zone t</Th>
                   <Th align="right">Value at risk</Th>
                   <Th>Constraint</Th>
                 </tr>

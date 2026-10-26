@@ -1,4 +1,6 @@
 import { Link } from 'react-router-dom';
+import { MaterialHandlingPanel } from '../components/MaterialHandlingPanel';
+import { EngineeringBasis } from '../components/EngineeringBasis';
 import { ArrowRight, Factory, Gauge, Timer } from 'lucide-react';
 import { MODULE_BY_ID } from '../app/modules';
 import { ModuleHeader, PanelTitle } from '../components/ModuleHeader';
@@ -54,6 +56,8 @@ export function Production() {
           <Badge tone="neutral">{assumptions.restartRampHours} h restart ramp assumption</Badge>
         </div>
       </ModuleHeader>
+      <MaterialHandlingPanel />
+      <div className="my-3 flex flex-wrap gap-2"><EngineeringBasis assetId="site:production" /><EngineeringBasis assetId="zone-north" /></div>
 
       <MetricGrid cols={5}>
         <MetricCell>
@@ -63,13 +67,13 @@ export function Production() {
           <Metric label="Utilisation" value={`${(derived.plantRatio * 100).toFixed(1)}%`} hint="weighted by zone share" tone={derived.plantRatio < 0.9 ? 'red' : derived.plantRatio < 0.98 ? 'amber' : 'green'} />
         </MetricCell>
         <MetricCell>
-          <Metric label="Lost hours" value={analytics.zones.reduce((sum, zone) => sum + zone.lostHours, 0).toFixed(2)} unit="h" hint="accumulated" tone="neutral" />
+          <Metric label="Foregone operating hours" value={analytics.zones.reduce((sum, zone) => sum + zone.lostHours, 0).toFixed(2)} unit="h" hint="accumulated shortfall" tone="neutral" />
         </MetricCell>
         <MetricCell>
-          <Metric label="Lost tonnes" value={formatTonnes(analytics.zones.reduce((sum, zone) => sum + zone.lostTonnes, 0))} hint="integrated shortfall" tone={totalLostValue > 0 ? 'amber' : 'green'} />
+          <Metric label="Foregone zone tonnes" value={formatTonnes(analytics.zones.reduce((sum, zone) => sum + zone.lostTonnes, 0))} hint="deferred potential; not permanent loss" tone={totalLostValue > 0 ? 'amber' : 'green'} />
         </MetricCell>
         <MetricCell>
-          <Metric label="Lost value" value={formatMoney(totalLostValue)} hint="not a financial statement" tone={totalLostValue > 0 ? 'amber' : 'green'} />
+          <Metric label="Illustrative value exposure" value={formatMoney(totalLostValue)} hint="not confirmed revenue loss" tone={totalLostValue > 0 ? 'amber' : 'green'} />
         </MetricCell>
       </MetricGrid>
 
@@ -99,7 +103,7 @@ export function Production() {
                   <Th align="right">Design</Th>
                   <Th align="right">Share</Th>
                   <Th align="right">Rate</Th>
-                  <Th align="right">Lost</Th>
+                  <Th align="right">Foregone zone t</Th>
                   <Th align="right">Value</Th>
                   <Th align="right">Flood margin</Th>
                 </tr>
@@ -159,7 +163,7 @@ export function Production() {
                       </div>
                       <Progress value={zone.operatingPct} tone={zone.operatingPct < 85 ? 'amber' : 'green'} className="my-1.5" />
                       <div className="grid grid-cols-2 gap-1 font-mono text-[9px] text-ink-400">
-                        <span>lost {zone.lostTonnes.toFixed(0)} t</span>
+                        <span>foregone {zone.lostTonnes.toFixed(0)} t</span>
                         <span className="text-right">{formatMoney(zone.lostValueUSD)}</span>
                         <span className="col-span-2 truncate text-ink-500">
                           {worst?.forecast

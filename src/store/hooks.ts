@@ -26,15 +26,23 @@ export function useActiveScenario(): Scenario {
 export function useRun(): ScenarioRun {
   const scenarioId = useMineStore((s) => s.activeScenarioId);
   const run = useMineStore((s) => s.runs[s.activeScenarioId]);
-  return useMemo(() => run, [run, scenarioId]);
+  const replay = useMineStore(s => s.replayActive);
+  const replayIndex = useMineStore(s => s.replayIndex);
+  return useMemo(() => {
+    const frame = replay ? run.frames[replayIndex] : undefined;
+    if (!frame) return run;
+    return { ...run, world: frame.world, incidents: frame.incidents,
+      telemetry: Object.fromEntries(Object.entries(run.telemetry).map(([id, series]) => [id, series.filter(p => p.simSec <= frame.simSec)])),
+      actions: run.actions.filter(a => a.atSimSec <= frame.simSec) };
+  }, [run, scenarioId, replay, replayIndex]);
 }
 
 export function useWorld(): WorldState {
-  return useMineStore((s) => s.runs[s.activeScenarioId].world);
+  return useMineStore((s) => s.getDisplayWorld());
 }
 
 export function useIncidents(): Incident[] {
-  return useMineStore((s) => s.runs[s.activeScenarioId].incidents);
+  return useMineStore((s) => s.replayActive ? s.runs[s.activeScenarioId].frames[s.replayIndex]?.incidents ?? s.runs[s.activeScenarioId].incidents : s.runs[s.activeScenarioId].incidents);
 }
 
 export function useReplayFrame() {
@@ -54,13 +62,15 @@ export function useContext(): EngineContext {
   const graph = useMineStore((s) => s.graph);
   const baseAssumptions = useMineStore((s) => s.baseAssumptions);
   const scenario = useActiveScenario();
+  const replayOverrides = useMineStore(s => s.replayActive ? s.getDisplayWorld().scenarioSnapshot : undefined);
+  const replayAssumptions = useMineStore(s => s.replayActive ? s.getDisplayWorld().assumptionsSnapshot : undefined);
   return useMemo(
     () => ({
       mine,
       graph,
-      assumptions: mergeAssumptions(baseAssumptions, scenario.overrides.assumptions),
+      assumptions: replayAssumptions ?? mergeAssumptions(baseAssumptions, (replayOverrides ?? scenario.overrides).assumptions),
     }),
-    [mine, graph, baseAssumptions, scenario],
+    [mine, graph, baseAssumptions, scenario, replayOverrides, replayAssumptions],
   );
 }
 
@@ -75,8 +85,11 @@ export function useAssumptions(): Assumptions {
 export function useDerived(): DerivedState {
   const ctx = useContext();
   const scenario = useActiveScenario();
-  const world = useWorld();
-  return useMemo(() => deriveState(ctx, scenario, world), [ctx, scenario, world]);
+  const world = useDisplayWorld();
+  const replay = useMineStore(s => s.replayActive);
+  return useMemo(() => replay ? { ...deriveState(ctx, { ...scenario, overrides: world.scenarioSnapshot ?? scenario.overrides }, world), pumpStates: world.pumps, feederStates: world.feeders,
+      sumpStates: world.sumps, zoneStates: world.zones, assetStates: world.assets, sensorStates: world.sensors }
+    : deriveState(ctx, scenario, world), [ctx, scenario, world, replay]);
 }
 
 /** Derived state for the currently displayed world (live or replay frame). */
@@ -98,13 +111,11 @@ export function useForecasts(): Record<SumpId, SumpForecastResult> {
   return useMemo(() => {
     const cached = FORECAST_CACHE.get(world);
     if (cached) return cached;
-    const next = forecastAllSumps({ ctx, scenario, world, derived });
+    const next = forecastAllSumps({ ctx, scenario: { ...scenario, overrides: world.scenarioSnapshot ?? scenario.overrides }, world, derived });
     FORECAST_CACHE.set(world, next);
     return next;
   }, [ctx, scenario, world, derived]);
 }
-
-const ANALYTICS_CACHE = new WeakMap<WorldState, AnalyticsBundle>();
 
 /**
  * Analytics are expensive; recompute at most once per simulated minute by
@@ -119,16 +130,8 @@ export function useAnalytics(): AnalyticsBundle {
   const incidents = useIncidents();
   const assumptions = useAssumptions();
 
-  const bucket = Math.floor(world.clock.elapsedSec / 60);
-  const bucketWorld = useMemo(() => world, [bucket]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  return useMemo(() => {
-    const cached = ANALYTICS_CACHE.get(bucketWorld);
-    if (cached) return cached;
-    const next = buildAnalytics({ ctx, scenario, world, derived, forecasts, incidents, assumptions });
-    ANALYTICS_CACHE.set(bucketWorld, next);
-    return next;
-  }, [ctx, scenario, world, derived, forecasts, incidents, assumptions, bucketWorld]);
+  return useMemo(() => buildAnalytics({ ctx, scenario: { ...scenario, overrides: world.scenarioSnapshot ?? scenario.overrides }, world, derived, forecasts, incidents, assumptions }),
+    [ctx, scenario, world, derived, forecasts, incidents, assumptions]);
 }
 
 /* -------------------------------------------------------------------------- */

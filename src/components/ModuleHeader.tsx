@@ -74,9 +74,9 @@ export function PanelTitle({
   className?: string;
 }) {
   return (
-    <div className={cx('flex items-center justify-between gap-2 border-b border-[color:var(--hairline)] px-3 py-2', className)}>
+    <div className={cx('flex min-w-0 flex-wrap items-center justify-between gap-2 border-b border-[color:var(--hairline)] px-3 py-2', className)}>
       <span className="font-mono text-[9.5px] uppercase tracking-[0.16em] text-ink-400">{children}</span>
-      {right && <div className="flex items-center gap-1.5">{right}</div>}
+      {right && <div className="flex max-w-full flex-wrap items-center gap-1.5">{right}</div>}
     </div>
   );
 }

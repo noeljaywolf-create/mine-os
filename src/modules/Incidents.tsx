@@ -10,7 +10,6 @@ import {
   EmptyState,
   Field,
   Panel,
-  Progress,
   SeverityBadge,
   Tabs,
   TextArea,
@@ -208,11 +207,9 @@ export function Incidents() {
                       <div key={hypothesis.id} className="rounded-[2px] border border-[color:var(--hairline)] bg-ink-900/50 p-2.5">
                         <div className="flex items-start justify-between gap-2">
                           <p className="text-[11.5px] leading-snug text-ink-100">{hypothesis.statement}</p>
-                          <span className={cx('num shrink-0 text-[11px]', hypothesis.confidence > 0.7 ? 'text-signal-green' : 'text-signal-amber')}>
-                            {(hypothesis.confidence * 100).toFixed(0)}%
-                          </span>
+                          <span className="text-[10px] text-ink-400">Unranked hypothesis</span>
                         </div>
-                        <Progress value={hypothesis.confidence * 100} tone={hypothesis.confidence > 0.7 ? 'green' : 'amber'} className="mt-1.5" />
+                        <p className="text-[10px] text-ink-500">No calibrated fault probability model; review supporting and contradicting evidence.</p>
                         <div className="mt-2 grid gap-2 md:grid-cols-2">
                           <div>
                             <div className="label-micro mb-1">Supports</div>

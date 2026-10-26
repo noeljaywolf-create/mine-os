@@ -19,6 +19,7 @@ import { useDerived } from '../store/hooks';
 import { useMineStore } from '../store/mineStore';
 
 import type { IndustrialSystem } from '../domain/types';
+import { EngineeringTwins } from '../components/EngineeringTwins';
 
 const SYSTEMS: IndustrialSystem[] = [
   'dewatering',
@@ -96,8 +97,10 @@ export function DigitalTwin() {
         </div>
       </ModuleHeader>
 
-      <div className="grid gap-2 xl:grid-cols-[1fr_320px]">
-        <Panel className="overflow-hidden">
+      <EngineeringTwins />
+
+      <div className="grid min-w-0 gap-3 2xl:grid-cols-[minmax(0,1fr)_300px]">
+        <Panel className="min-w-0 overflow-hidden">
           <PanelTitle
             right={
               <div className="flex items-center gap-2 font-mono text-[9px] uppercase tracking-[0.1em] text-ink-500">

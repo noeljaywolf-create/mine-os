@@ -27,10 +27,12 @@ import {
   useDisplayWorld,
   useForecasts,
   useRun,
+  useDerived,
 } from '../store/hooks';
 import { useMineStore as useStore } from '../store/mineStore';
 import { deriveState, mergeAssumptions } from '../simulation/engine';
-import { forecastAllSumps } from '../simulation/forecast';
+import { forecastAllSumps, storageForecastDivergence } from '../simulation/forecast';
+import { pumpingTotals } from '../simulation/plant';
 import { formatDurationHours, formatFlow, formatLevel, formatMoney, formatPower } from '../domain/units';
 import type { FeederStatus, PumpMode } from '../domain/types';
 
@@ -44,6 +46,8 @@ export function Scenarios() {
   const capabilities = useCapabilities();
   const displayWorld = useDisplayWorld();
   const run = useRun();
+  const derived = useDerived();
+  const totals = pumpingTotals(mine, derived.pumpStates);
   const createBranch = useStore((s) => s.createScenarioBranch);
   const switchScenario = useStore((s) => s.switchScenario);
   const resetScenario = useStore((s) => s.resetActiveScenario);
@@ -80,7 +84,7 @@ export function Scenarios() {
 
   const editable = !scenario.isBaseline && capabilities.can('scenario.edit-assumptions');
   const pump = mine.pumps.find((item) => item.id === pumpId)!;
-  const pumpState = store.getDerived().pumpStates[pumpId];
+  const pumpState = derived.pumpStates[pumpId];
   const pumpOverrideHealth = scenario.overrides.pumpOverrides[pumpId]?.health ?? pump.health;
   const replayFrame = run.frames[store.replayIndex];
 
@@ -425,19 +429,19 @@ export function Scenarios() {
             <Panel>
               <PanelTitle>Branch economics</PanelTitle>
               <div className="px-3 py-2.5">
-                <KeyValue label="Running power" value={formatPower(store.getDerived().pumpStates[mine.pumps[0].id]?.powerKw ?? 0)} />
-                <KeyValue label="Pumping demand" value={formatFlow(mine.pumps.reduce((sum, item) => sum + (store.getDerived().pumpStates[item.id]?.flowM3h ?? 0), 0))} />
+                <KeyValue label="Wet-running power" value={formatPower(totals.wetPowerKw)} />
+                <KeyValue label="Total station duty" value={formatFlow(totals.stationFlowM3h)} />
                 <KeyValue label="Tariff" value={`${formatMoney(assumptions.energyTariffUSDPerKwh)}/kWh`} />
                 <KeyValue label="Value per tonne" value={formatMoney(assumptions.valuePerTonneUSD)} />
                 <KeyValue label="Crew callout" value={formatMoney(assumptions.crewCalloutCostUSD)} />
                 <div className="mt-2">
                   <div className="mb-1 flex items-center justify-between font-mono text-[9px] text-ink-500">
-                    <span>baseline → branch forecast divergence</span>
+                    <span>horizon storage difference / nominal capacity</span>
                     <span>
-                      {formatFlow(Object.values(forecasts).reduce((sum, item) => sum + (item.points.at(-1)?.inflowM3h ?? 0), 0))}
+                      {storageForecastDivergence(mine, baselineForecasts, forecasts).toFixed(2)}%
                     </span>
                   </div>
-                  <Progress value={Math.min(100, Math.abs(scenario.seed - baseline.seed) * 4)} tone="cyan" />
+                  <Progress value={storageForecastDivergence(mine, baselineForecasts, forecasts)} tone="cyan" />
                 </div>
               </div>
             </Panel>

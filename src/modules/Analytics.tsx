@@ -88,7 +88,7 @@ export function Analytics() {
           <Metric label="Plant throughput" value={`${analytics.zones.reduce((sum, zone) => sum + zone.rateTph, 0).toFixed(0)} tph`} hint="sum of available zones" tone="green" />
         </MetricCell>
         <MetricCell>
-          <Metric label="Lost production" value={formatTonnes(analytics.zones.reduce((sum, zone) => sum + zone.lostTonnes, 0))} hint="this run" tone="amber" />
+          <Metric label="Foregone zone production" value={formatTonnes(analytics.zones.reduce((sum, zone) => sum + zone.lostTonnes, 0))} hint="not confirmed permanent loss" tone="amber" />
         </MetricCell>
         <MetricCell>
           <Metric label="Value exposure" value={formatMoney(analytics.zones.reduce((sum, zone) => sum + zone.lostValueUSD, 0))} hint="modelled, scenario assumptions" tone="amber" />
@@ -224,8 +224,8 @@ export function Analytics() {
                 <Th align="right">Design</Th>
                 <Th align="right">Rate</Th>
                 <Th align="right">Operating</Th>
-                <Th align="right">Lost hours</Th>
-                <Th align="right">Lost tonnes</Th>
+                <Th align="right">Foregone hours</Th>
+                <Th align="right">Foregone zone t</Th>
                 <Th align="right">Value</Th>
                 <Th>Constraint</Th>
                 <Th align="right">To flood</Th>
@@ -279,7 +279,7 @@ export function Analytics() {
                 <div key={row.pumpId} className="px-3 py-2">
                   <div className="flex items-center gap-1.5">
                     <span className="text-[10.5px] text-ink-200">{row.pumpName}</span>
-                    <span className="ml-auto font-mono text-[9px] text-ink-400">MTBF {row.expectedMtbfHours.toFixed(0)} h</span>
+                    <span className="ml-auto font-mono text-[9px] text-ink-400">MTBF unsupported — no calibrated failure data</span>
                   </div>
                   <ul className="mt-0.5 space-y-0.5">
                     {row.drivers.map((driver) => (

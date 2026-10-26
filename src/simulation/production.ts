@@ -10,7 +10,17 @@ import type {
   ZoneRuntimeState,
 } from '../domain/types';
 import type { MineDefinition } from '../domain/mine';
-import { sumpLevelM } from './water';
+import { sumpLevelM, sumpVolumeAtLevel } from './water';
+import { effectiveSump } from './waterNetwork';
+import type { EngineeringOverrides } from '../domain/engineering';
+
+export function productionIsScheduled(elapsedSec: number, settings?: EngineeringOverrides): boolean {
+  const hours = settings?.plannedShiftHours ?? 24;
+  const start = settings?.shiftStartHour ?? 0;
+  if (!Number.isFinite(hours + start) || hours < 0 || hours > 24 || start < 0 || start >= 24)
+    throw new Error('Planned shift must have duration 0–24 h and start in [0,24).');
+  return ((elapsedSec / 3600 - start) % 24 + 24) % 24 < hours;
+}
 
 /**
  * Production exposure model.
@@ -56,8 +66,10 @@ export function evaluateZone(
   zone: ProductionZone,
   sumpStates: Record<SumpId, SumpRuntimeState>,
   overrides: ScenarioOverride,
+  elapsedSec = 0,
 ): ZoneEvaluation {
-  const sump = mine.sumps.find((s) => s.id === zone.floodControlSumpId);
+  const definition = mine.sumps.find((s) => s.id === zone.floodControlSumpId);
+  const sump = definition ? effectiveSump(definition, overrides) : undefined;
   const sumpState = sump ? sumpStates[sump.id] : undefined;
   if (!sump || !sumpState) {
     return {
@@ -105,7 +117,13 @@ export function evaluateZone(
 
   const net = sumpState.inflowM3h - sumpState.outflowM3h;
   const secondsToFlood =
-    levelM >= floodLevelM ? 0 : net > 0 ? ((floodLevelM - levelM) * sump.areaM2 / net) * 3600 : null;
+    levelM >= floodLevelM ? 0 : net > 0 ? ((sumpVolumeAtLevel(sump, floodLevelM) - sumpState.volumeM3) / net) * 3600 : null;
+
+  const productionScale = overrides.engineering?.productionLoadScale ?? 1;
+  if (productionScale < ratio) { ratio = productionScale; status = 'degraded'; reason = 'Engineer-selected production load curtailment.'; }
+  if (!productionIsScheduled(elapsedSec, overrides.engineering)) {
+    ratio = 0; status = 'standby'; reason = 'Outside the configured planned shift; no production shortfall is accumulated.';
+  }
 
   void overrides;
   return {

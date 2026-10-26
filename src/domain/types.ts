@@ -9,6 +9,7 @@
  * ALL DATA IN THIS DEMONSTRATION IS SYNTHETIC.
  */
 
+import type { EngineeringOverrides, HydraulicResult, MaterialFlow, MaterialLedger, WaterLedger } from './engineering';
 export type MineId = string;
 export type LevelId = string;
 export type ZoneId = string;
@@ -89,7 +90,7 @@ export interface SensorState {
   lastValue: number | null;
   /** Seconds since last valid sample. */
   ageSec: number;
-  /** 0..1 — how much the reading can be trusted, degraded by link quality and age. */
+  /** Heuristic 0..1 input-quality index, not a calibrated probability. */
   confidence: number;
   note: string | null;
 }
@@ -118,6 +119,8 @@ export interface ElectricalFeeder {
 export type PumpMode = 'running' | 'standby' | 'stopped' | 'maintenance';
 
 export interface Pump {
+  /** False for a canonical hypothetical planning slot; never dispatchable until explicitly installed in a scenario. */
+  installed?: boolean;
   id: PumpId;
   name: string;
   sumpId: SumpId;
@@ -152,6 +155,8 @@ export interface SumpThreshold {
 }
 
 export interface Sump {
+  /** Optional monotone stage-storage survey (synthetic in this demo). */
+  stageStorage?: Array<{ levelM: number; volumeM3: number }>;
   id: SumpId;
   name: string;
   levelId: LevelId;
@@ -347,8 +352,8 @@ export interface Incident {
 export interface IncidentHypothesis {
   id: string;
   statement: string;
-  /** 0..1 modelled confidence, always accompanied by evidence. */
-  confidence: number;
+  /** Null unless a calibrated probability model exists. This demo has none. */
+  confidence: number | null;
   supportingEvidence: EvidenceRef[];
   contradictingEvidence: EvidenceRef[];
   /** Alternative explanations that remain open. */
@@ -574,8 +579,9 @@ export interface EngineeringDecision {
 }
 
 export interface ScenarioOverride {
+  engineering?: EngineeringOverrides;
   assetOverrides: Record<AssetId, Partial<AssetRuntimeState>>;
-  pumpOverrides: Record<PumpId, Partial<Pick<Pump, 'mode' | 'health' | 'efficiency'>>>;
+  pumpOverrides: Record<PumpId, Partial<Pick<Pump, 'mode' | 'health' | 'efficiency'>> & { speedRatio?: number; curveScale?: number; suctionK?: number }>;
   feederOverrides: Record<FeederId, Partial<Pick<ElectricalFeeder, 'status'>>>;
   sumpOverrides: Record<SumpId, { inflowMultiplier?: number; volumeM3?: number }>;
   sensorOverrides: Record<SensorId, { stale?: boolean; offline?: boolean }>;
@@ -611,6 +617,14 @@ export interface SumpRuntimeState {
 }
 
 export interface PumpRuntimeState {
+  /** Last integration interval's actual water delivery, distinct from wet running operating-point capacity. */
+  deliveredFlowM3h?: number;
+  averageInputPowerKw?: number;
+  energyCostUSD?: number;
+  condition?: number;
+  dischargeContributionM3h?: number;
+  hydraulic?: HydraulicResult;
+  energyKwh?: number;
   mode: PumpMode;
   /** Modelled delivered flow (m3/h). */
   flowM3h: number;
@@ -628,6 +642,10 @@ export interface PumpRuntimeState {
 }
 
 export interface FeederRuntimeState {
+  servicesAllocatedKw?: number;
+  pumpBudgetKw?: Record<string, number>;
+  allocatedKw?: number;
+  availableKw?: number;
   status: FeederStatus;
   connectedLoadKw: number;
   capacityKva: number;
@@ -637,6 +655,8 @@ export interface FeederRuntimeState {
 }
 
 export interface ZoneRuntimeState {
+  /** Stateful recovery ceiling. It only increases through deterministic time stepping. */
+  recoveryRatio?: number;
   /** Tonnes per hour currently being produced. */
   rateTph: number;
   /** 0..1 of design throughput. */
@@ -687,6 +707,18 @@ export interface EngineEvent {
 }
 
 export interface WorldState {
+  assumptionsSnapshot?: Assumptions;
+  materialFlow?: MaterialFlow;
+  materialLedger?: MaterialLedger;
+  waterTotals?: { initialM3: number; externalInM3: number; externalOutM3: number; overflowM3: number; residualM3: number };
+  sensorSampleHistory?: Record<string, Array<{ atSec: number; value: number | null }>>;
+  scenarioSnapshot?: ScenarioOverride;
+  waterLedger?: WaterLedger;
+  engineeringSnapshot?: EngineeringOverrides;
+  oreBufferTonnes?: number;
+  plantProcessedTonnes?: number;
+  deferredTonnes?: number;
+  permanentLostTonnes?: number;
   mineId: MineId;
   scenarioId: ScenarioId;
   clock: SimulationClock;

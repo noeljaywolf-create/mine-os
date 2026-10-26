@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Cable, CircleSlash, Radio, ShieldQuestion } from 'lucide-react';
 import { MODULE_BY_ID } from '../app/modules';
 import { ModuleHeader, PanelTitle } from '../components/ModuleHeader';
@@ -117,6 +118,7 @@ export function Telemetry() {
           <span className="ml-auto font-mono text-[9px] uppercase tracking-[0.12em] text-ink-500">simulated tags only</span>
         </div>
       </ModuleHeader>
+      <p className="my-2 text-xs"><Link to="/app/engineering?view=investigation" className="text-signal-cyanBright">Open sensor failure, scaling, delayed-sample and contradiction investigation →</Link></p>
 
       <div className="grid gap-2 xl:grid-cols-[1.5fr_1fr]">
         <Panel>

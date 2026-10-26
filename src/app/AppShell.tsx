@@ -48,7 +48,7 @@ export function AppShell() {
   const clock = useSimClock();
   const capabilities = useCapabilities();
 
-  const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [inspectorOpen, setInspectorOpen] = useState(() => window.matchMedia('(min-width: 1280px)').matches);
   const [navOpen, setNavOpen] = useState(false);
   const [scenarioOpen, setScenarioOpen] = useState(false);
 
@@ -65,13 +65,12 @@ export function AppShell() {
 
   useEffect(() => {
     if (selection.assetId) setInspectorOpen(true);
-    setReplayIndex(null);
-  }, [selection.assetId, setReplayIndex]);
+  }, [selection.assetId]);
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
+      if (target?.closest('button, input, select, textarea, [role="button"], [contenteditable="true"]')) return;
       if (event.code === 'Space') {
         event.preventDefault();
         setRunning(!useMineStore.getState().running);
@@ -309,7 +308,7 @@ export function AppShell() {
             <div className="flex items-center gap-1.5">
               <Cpu size={11} className="text-ink-500" />
               <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-ink-500">Engine</span>
-              <span className="ml-auto font-mono text-[9px] text-ink-400">v1.0 · deterministic</span>
+              <span className="ml-auto font-mono text-[9px] text-ink-400">v2.0 · deterministic</span>
             </div>
             <p className="mt-1 text-[9px] leading-snug text-ink-600">
               {SIM_SECONDS_PER_REAL_SECOND} sim-s per real-s at 1×. {ROLE_SIMULATOR_NOTICE}

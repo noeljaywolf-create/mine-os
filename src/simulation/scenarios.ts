@@ -1,4 +1,14 @@
 import type { Scenario, ScenarioOverride, ScenarioId } from '../domain/types';
+import type { EngineeringOverrides } from '../domain/engineering';
+
+export function mergeEngineering(base: EngineeringOverrides = {}, patch: EngineeringOverrides = {}): EngineeringOverrides {
+  const pipes = { ...base.pipes };
+  for (const [id, pipe] of Object.entries(patch.pipes ?? {})) pipes[id] = { ...pipes[id], ...pipe };
+  const materialRoutes = { ...base.materialRoutes };
+  for (const [id, route] of Object.entries(patch.materialRoutes ?? {})) materialRoutes[id] = { ...materialRoutes[id], ...route };
+  return { ...base, ...patch, pipes, materialRoutes, telemetryFaults: { ...base.telemetryFaults, ...patch.telemetryFaults },
+    statusFeedback: { ...base.statusFeedback, ...patch.statusFeedback } };
+}
 
 /**
  * Scenario management.
@@ -40,14 +50,7 @@ export function createBaselineScenario(epochMs: number): Scenario {
 }
 
 export function cloneOverrides(overrides: ScenarioOverride): ScenarioOverride {
-  return {
-    assetOverrides: { ...overrides.assetOverrides },
-    pumpOverrides: { ...overrides.pumpOverrides },
-    feederOverrides: { ...overrides.feederOverrides },
-    sumpOverrides: { ...overrides.sumpOverrides },
-    sensorOverrides: { ...overrides.sensorOverrides },
-    assumptions: { ...overrides.assumptions },
-  };
+  return structuredClone(overrides);
 }
 
 export interface CloneOptions {
@@ -65,6 +68,7 @@ export interface CloneOptions {
 export function cloneScenario(parent: Scenario, options: CloneOptions): Scenario {
   const overrides = cloneOverrides(parent.overrides);
   if (options.overrides) {
+    overrides.engineering = mergeEngineering(overrides.engineering, options.overrides.engineering);
     overrides.assetOverrides = { ...overrides.assetOverrides, ...options.overrides.assetOverrides };
     overrides.pumpOverrides = { ...overrides.pumpOverrides, ...options.overrides.pumpOverrides };
     overrides.feederOverrides = { ...overrides.feederOverrides, ...options.overrides.feederOverrides };

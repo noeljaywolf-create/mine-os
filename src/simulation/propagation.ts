@@ -57,6 +57,7 @@ export interface PropagationInput {
   sensorStates: Record<SensorId, SensorState>;
   /** Ratio of the processing plant's design throughput currently being fed. */
   plantRatio: number;
+  plantScheduled?: boolean;
 }
 
 export interface PropagationOutput {
@@ -105,7 +106,9 @@ export function computePropagation(input: PropagationInput): PropagationOutput {
   for (const feeder of mine.feeders) {
     const state = feederStates[feeder.id];
     const status: AssetStatus =
-      state.status === 'energised'
+      state.status === 'energised' && state.supplyRatio === 0
+        ? 'blocked'
+        : state.status === 'energised'
         ? 'operational'
         : state.status === 'degraded'
           ? 'degraded'
@@ -168,9 +171,11 @@ export function computePropagation(input: PropagationInput): PropagationOutput {
 
   // ------------------------------------------------------------------ plant
   setState(mine.plant.id, {
-    status: input.plantRatio <= 0.01 ? 'failed' : input.plantRatio < 0.95 ? 'degraded' : 'operational',
+    status: input.plantScheduled === false ? 'standby' : input.plantRatio <= 0.01 ? 'failed' : input.plantRatio < 0.95 ? 'degraded' : 'operational',
     statusReason:
-      input.plantRatio <= 0.01
+      input.plantScheduled === false
+        ? 'Outside the configured planned production shift.'
+        : input.plantRatio <= 0.01
         ? 'No feed available from the underground production zones.'
         : input.plantRatio < 0.95
           ? `Receiving ${(input.plantRatio * 100).toFixed(0)}% of design feed.`
@@ -188,6 +193,13 @@ export function computePropagation(input: PropagationInput): PropagationOutput {
       effectiveness: override?.effectiveness ?? 1,
     });
   }
+  for (const route of mine.materialHandling?.routes ?? []) {
+    const available = overrides.engineering?.materialRoutes?.[route.id]?.available ?? route.defaultAvailable;
+    if (!available) setState(route.id, { status: route.alternative ? 'offline' : 'failed', effectiveness: 0,
+      statusReason: route.alternative ? 'Alternative ore route not enabled in this scenario.' : 'Primary ore route unavailable; calculated alternate-route/hoist capacities determine delivered production.' });
+  }
+  if (overrides.engineering?.hoistAvailable === false) setState('mat-hoist', { status: 'failed', effectiveness: 0,
+    statusReason: 'Common material-handling path unavailable; finite ore inventory governs delayed processing consequences.' });
 
   // --------------------------------------------- explicit scenario overrides
   for (const [assetId, override] of Object.entries(overrides.assetOverrides)) {
@@ -219,6 +231,15 @@ export function computePropagation(input: PropagationInput): PropagationOutput {
     const current = queue.shift()!;
     const sourceState = states[current.id];
     for (const edge of graph.out(current.id)) {
+      if (mine.pumps.some(p => p.id === edge.to && p.installed === false) && !overrides.engineering?.additionalStandby) continue;
+      // Physical asset effectiveness is resolved by the electrical/hydraulic/storage/process models.
+      // The graph explains the chain; it must not overwrite their numeric conclusions.
+      if (mine.zones.some(z => z.id === edge.to) || edge.to === mine.plant.id || mine.sumps.some(s => s.id === edge.to)) {
+        if ((states[edge.to]?.effectiveness ?? 1) < 1) cascades.push({ sourceId: current.sourceId,
+          targetId: edge.to, depth: current.depth + 1, path: [...current.path, edge.to], via: edge.type,
+          effect: 'exposed', rationale: `${edge.rationale} Consequence is conditional on computed storage/access thresholds.` });
+        continue;
+      }
       if (edge.type === 'monitors' || edge.type === 'pumps_from' || edge.type === 'drains_to') continue;
       const targetId = edge.to;
       const targetState = states[targetId];
@@ -254,7 +275,7 @@ export function computePropagation(input: PropagationInput): PropagationOutput {
         setState(targetId, {
           status: 'degraded',
           statusReason: `Dependency ${current.id} degraded — ${edge.rationale}`,
-          effectiveness: Math.min(targetState.effectiveness, 0.7),
+          effectiveness: targetState.effectiveness,
           causedBy: [...new Set([...targetState.causedBy, current.id])],
         });
         rootCauseOf[targetId] = current.id;
@@ -280,13 +301,14 @@ export function computePropagation(input: PropagationInput): PropagationOutput {
   // ------------------------------- degraded dependencies attenuate their dependents
   for (const sourceId of degradedSources) {
     for (const edge of graph.out(sourceId)) {
+      if (edge.type !== 'powered_by' || mine.pumps.some(p => p.id === edge.to) || edge.to === mine.plant.id) continue;
       const target = states[edge.to];
       if (!target || target.status === 'failed' || target.status === 'blocked') continue;
       if (target.status === 'operational') {
         setState(edge.to, {
           status: 'degraded',
           statusReason: `Dependency ${sourceId} degraded — ${edge.rationale}`,
-          effectiveness: Math.min(target.effectiveness, 0.7),
+          effectiveness: target.effectiveness,
           causedBy: [...new Set([...target.causedBy, sourceId])],
         });
         rootCauseOf[edge.to] = sourceId;

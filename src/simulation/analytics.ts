@@ -73,6 +73,7 @@ export function buildWaterBalance(
 }
 
 export interface PumpPerformanceRow {
+  energyCostUSD: number;
   pumpId: string;
   pumpName: string;
   sumpName: string;
@@ -103,7 +104,8 @@ export function buildPumpPerformance(
     const feeder = ctx.mine.feeders.find((f) => f.id === pump.feederId);
     const flow = runtime?.flowM3h ?? 0;
     const power = runtime?.powerKw ?? 0;
-    const energyKwh = power * elapsedHours;
+    const energyKwh = runtime?.energyKwh ?? 0;
+    void elapsedHours;
     const specific = flow > 1 ? power / flow : 0;
     return {
       pumpId: pump.id,
@@ -118,9 +120,10 @@ export function buildPumpPerformance(
       utilisationPct: pump.ratedFlowM3h > 0 ? (flow / pump.ratedFlowM3h) * 100 : 0,
       powerKw: power,
       energyKwh,
+      energyCostUSD: runtime?.energyCostUSD ?? 0,
       specificEnergyKwhPerM3: specific,
-      healthPct: pump.health * 100,
-      efficiencyPct: pump.efficiency * 100,
+      healthPct: (runtime?.condition ?? pump.health) * 100,
+      efficiencyPct: (runtime?.hydraulic?.efficiency ?? pump.efficiency) * 100,
       powered: runtime?.powered ?? false,
       reason: runtime?.statusReason ?? '',
     };
@@ -139,20 +142,21 @@ export function buildEnergySummary(
   rows: PumpPerformanceRow[],
   assumptions: Assumptions,
 ): EnergySummary {
+  void assumptions;
   const runningPowerKw = rows.reduce((sum, row) => sum + row.powerKw, 0);
   const totalFlow = rows.reduce((sum, row) => sum + row.flowM3h, 0);
   const energyKwh = rows.reduce((sum, row) => sum + row.energyKwh, 0);
   return {
     runningPowerKw,
     energyKwh,
-    costUSD: energyKwh * assumptions.energyTariffUSDPerKwh,
+    costUSD: rows.reduce((sum, row) => sum + row.energyCostUSD, 0),
     averageSpecificKwhPerM3: totalFlow > 0 ? runningPowerKw / totalFlow : 0,
     byPump: rows.map((row) => ({
       pumpId: row.pumpId,
       pumpName: row.pumpName,
       powerKw: row.powerKw,
       energyKwh: row.energyKwh,
-      energyCostUSD: row.energyKwh * assumptions.energyTariffUSDPerKwh,
+      energyCostUSD: row.energyCostUSD,
     })),
   };
 }
@@ -214,10 +218,10 @@ export interface ReliabilityRow {
   pumpId: string;
   pumpName: string;
   healthPct: number;
-  availabilityPct: number;
+  availabilityPct: number | null;
   /** Illustrative, model-derived expected hours between failures. */
-  expectedMtbfHours: number;
-  expectedAnnualDowntimeHours: number;
+  expectedMtbfHours: number | null;
+  expectedAnnualDowntimeHours: number | null;
   drivers: string[];
   recommendation: string;
 }
@@ -228,11 +232,11 @@ export function buildReliability(
 ): ReliabilityRow[] {
   return ctx.mine.pumps.map((pump) => {
     const runtime = derived.pumpStates[pump.id];
-    const health = pump.health;
+    const health = runtime?.condition ?? pump.health;
     // Illustrative reliability relationship, clearly synthetic.
-    const mtbf = 1200 * Math.pow(health, 3.2);
-    const availability = runtime.unavailable ? 0.15 : runtime.status === 'degraded' ? 0.7 : 0.96;
-    const annualDowntime = 8760 * (1 - availability) + 8760 * (1 - health) * 0.04;
+    const mtbf = null;
+    const availability = null;
+    const annualDowntime = null;
     const drivers: string[] = [];
     if (health < 0.8) drivers.push(`Health ${(health * 100).toFixed(0)}% — below the 80% planning floor.`);
     if (runtime && !runtime.powered) drivers.push('No usable power from the connected feeder.');
@@ -242,7 +246,7 @@ export function buildReliability(
       pumpId: pump.id,
       pumpName: pump.name,
       healthPct: health * 100,
-      availabilityPct: availability * 100,
+      availabilityPct: availability,
       expectedMtbfHours: mtbf,
       expectedAnnualDowntimeHours: annualDowntime,
       drivers,
@@ -366,19 +370,14 @@ export function buildModelChecks(
 ): ModelCheck[] {
   const checks: ModelCheck[] = [];
 
-  let worstBalance = 0;
-  for (const sump of ctx.mine.sumps) {
-    const state = world.sumps[sump.id];
-    const expected = Math.max(0, Math.min(sump.capacityM3, state.volumeM3));
-    worstBalance = Math.max(worstBalance, Math.abs(expected - state.volumeM3));
-  }
+  const worstBalance = Math.abs(world.waterLedger?.residualM3 ?? 0);
   checks.push({
     id: 'mass-balance',
     label: 'Mass balance closure',
     value: `${worstBalance.toFixed(3)} m³ max residual`,
     status: worstBalance < 0.01 ? 'ok' : 'fail',
     explanation:
-      'Every stored volume is clamped to the physical range [0, capacity]. A non-zero residual would indicate a broken integrator.',
+      'Residual = initial storage + external inflow − external discharge − overflow − final storage. Internal transfers cancel. Software conservation check, not field validation.',
   });
 
   const levelSensors = ctx.mine.sensors.filter((s) => s.kind === 'level');

@@ -8,3 +8,5 @@ tsconfig.tsbuildinfo
 *.log
 smoke.cjs
 live-smoke.cjs
+test-results/
+playwright-report/

@@ -21,6 +21,8 @@ import { useAnalytics, useAssumptions, useForecasts, useRun } from '../store/hoo
 import { useMineStore } from '../store/mineStore';
 
 import { formatDurationHours, formatLevel } from '../domain/units';
+import { EngineeringBasis } from '../components/EngineeringBasis';
+import { forecastBasis } from '../simulation/analysisEvidence';
 
 export function Forecast() {
   const mine = useMineStore((s) => s.mine);
@@ -52,6 +54,7 @@ export function Forecast() {
         module={MODULE_BY_ID.forecast}
         actions={
           <>
+            <EngineeringBasis assetId="analysis:forecast" providedBasis={forecastBasis(forecast)} />
             <Badge tone={degradedCount ? 'amber' : 'green'} dot>
               {degradedCount ? `${degradedCount} sumps with degraded tags` : 'all forecasts fully instrumented'}
             </Badge>
@@ -247,8 +250,8 @@ export function Forecast() {
                     </button>
                   </Td>
                   <Td align="right" className={cx('num', row.healthPct < 80 ? 'text-signal-amber' : 'text-ink-200')}>{row.healthPct.toFixed(0)}%</Td>
-                  <Td align="right" className="num">{row.availabilityPct.toFixed(0)}%</Td>
-                  <Td align="right" className="num">{row.expectedMtbfHours.toFixed(0)} h</Td>
+                  <Td align="right" className="num">Not calibrated</Td>
+                  <Td align="right" className="num">Unsupported</Td>
                   <Td className="max-w-[220px] text-2xs text-ink-400">{row.recommendation}</Td>
                 </tr>
               ))}

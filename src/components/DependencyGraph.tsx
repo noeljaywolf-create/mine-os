@@ -3,6 +3,8 @@ import {
   Background,
   BackgroundVariant,
   Controls,
+  Handle,
+  Position,
   ReactFlow,
   type Edge,
   type Node,
@@ -51,17 +53,19 @@ function AssetNodeView({ data }: NodeProps<AssetNode>) {
   return (
     <div
       className={cx(
-        'w-[152px] rounded-[2px] border bg-ink-850/95 px-2 py-1.5 shadow-panel transition-opacity',
+        'min-h-[112px] w-[212px] rounded-md border bg-ink-850/95 px-3 py-2 shadow-panel transition-opacity',
         data.selected ? 'ring-1 ring-signal-cyanBright' : '',
         data.dimmed ? 'opacity-30' : 'opacity-100',
       )}
       style={{ borderColor: STATUS_STROKE[data.status], background: STATUS_FILL[data.status] }}
     >
+      <Handle type="target" position={Position.Left} isConnectable={false} style={{ opacity: 0 }} />
+      <Handle type="source" position={Position.Right} isConnectable={false} style={{ opacity: 0 }} />
       <div className="flex items-center justify-between gap-1">
         <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-ink-400">{data.kind}</span>
         {data.root && <span className="h-1.5 w-1.5 rounded-full bg-signal-red animate-pulse-soft" />}
       </div>
-      <div className="mt-0.5 truncate text-[11px] leading-tight text-ink-50">{data.label}</div>
+      <div className="mt-1 break-words text-xs leading-4 text-ink-50">{data.label}</div>
       <div className="mt-1 flex items-center justify-between gap-1">
         <span className="num truncate text-[9px] text-ink-400">{data.tag}</span>
         <span className={cx('num text-[9px]', toneText(toneForStatus(data.status)))}>
@@ -127,12 +131,27 @@ export function DependencyGraph({
       deps.forEach((id) => dimmed.delete(id));
     }
 
+    // Presentation lanes are independent of surveyed/geographic coordinates.
+    // Reserve positions using all assets so filters do not reshuffle the graph.
+    const routeIds = new Set(mine.materialHandling?.routes.map(r => r.id));
+    const laneFor = (asset: (typeof mine.assets)[number]) => {
+      if (routeIds.has(asset.id)) return 4;
+      if (asset.id === 'mat-hoist') return 5;
+      return ({ feeder: 0, pump: 1, sump: 2, zone: 3, plant: 6, sensor: 7, level: 0, infrastructure: 6 } as const)[asset.kind];
+    };
+    const rows = Array<number>(8).fill(0);
+    const positions = new Map(mine.assets.map(asset => {
+      const lane = laneFor(asset);
+      return [asset.id, { x: lane * 320, y: rows[lane]++ * 160 }];
+    }));
     const flowNodes: AssetNode[] = visible.map((asset) => {
       const state = derived.assetStates[asset.id];
       return {
         id: asset.id,
         type: 'asset' as const,
-        position: { x: asset.twinPosition.x, y: asset.twinPosition.y },
+        position: positions.get(asset.id)!,
+        sourcePosition: Position.Right,
+        targetPosition: Position.Left,
         data: {
           label: asset.name,
           tag: asset.tag,
@@ -177,13 +196,13 @@ export function DependencyGraph({
   }, [mine, derived, systems, activeId, focusId, showSensors]);
 
   return (
-    <div className={cx('relative', className)} style={{ height }}>
+    <div className={cx('relative min-w-0 overflow-hidden', className)} style={{ height }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
         fitView
-        fitViewOptions={{ padding: 0.18, maxZoom: 1.1 }}
+        fitViewOptions={{ padding: 0.18, minZoom: 0.45, maxZoom: 1.1 }}
         minZoom={0.3}
         maxZoom={1.6}
         proOptions={{ hideAttribution: true }}

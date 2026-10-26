@@ -18,6 +18,7 @@ import {
 import type { Capability } from '../domain/types';
 
 export type ModuleId =
+  | 'engineering'
   | 'mission-control'
   | 'digital-twin'
   | 'dewatering'
@@ -46,6 +47,9 @@ export interface ModuleDefinition {
 }
 
 export const MODULES: ModuleDefinition[] = [
+  { id: 'engineering', path: '/app/engineering', label: 'Engineering Challenge & Resilience Lab', short: 'Engineering Lab',
+    group: 'Engineering', icon: FlaskConical, capability: 'view.mission-control',
+    description: 'Hydraulic curves, joint failures, traceable evidence, constrained recovery and engineering challenges.', product: 'core' },
   {
     id: 'mission-control',
     path: '/app',

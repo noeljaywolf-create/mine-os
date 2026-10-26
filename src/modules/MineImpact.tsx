@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { EngineeringBasis } from '../components/EngineeringBasis';
 import { ArrowRight, Factory, Mountain, TrendingDown } from 'lucide-react';
 import { MODULE_BY_ID } from '../app/modules';
 import { ModuleHeader, PanelTitle } from '../components/ModuleHeader';
@@ -62,10 +63,10 @@ export function MineImpact() {
           <Metric label="Mine production" value={formatTonnes(derived.plantRateTph)} unit="t/h" hint={`${(derived.plantRatio * 100).toFixed(0)}% of design`} tone={derived.plantRatio < 0.9 ? 'amber' : 'green'} />
         </MetricCell>
         <MetricCell>
-          <Metric label="Lost tonnes" value={formatTonnes(totalLostTonnes)} hint="accumulated this scenario" tone={totalLostTonnes > 0 ? 'amber' : 'green'} />
+          <Metric label="Foregone zone tonnes" value={formatTonnes(totalLostTonnes)} hint="deferred potential, not permanent loss" tone={totalLostTonnes > 0 ? 'amber' : 'green'} />
         </MetricCell>
         <MetricCell>
-          <Metric label="Value at risk" value={formatMoney(totalLostUSD)} hint="lost production × realised value" tone={totalLostUSD > 0 ? 'amber' : 'green'} />
+          <Metric label="Value at risk" value={formatMoney(totalLostUSD)} hint="foregone zone t × assumed value/t" tone={totalLostUSD > 0 ? 'amber' : 'green'} />
         </MetricCell>
         <MetricCell>
           <Metric label="Exposed zones" value={`${exposedZones.length} / ${analytics.zones.length}`} hint={exposedZones.map((zone) => zone.zoneName).join(', ') || 'none'} tone={exposedZones.length ? 'amber' : 'green'} />
@@ -105,6 +106,7 @@ export function MineImpact() {
                 </div>
                 <Progress value={zone.operatingPct} tone={zone.operatingPct < 85 ? 'amber' : 'green'} className="my-1.5" />
                 <div className="font-mono text-[9px] text-ink-500">{zone.constraint}</div>
+                <EngineeringBasis assetId={zone.zoneId} />
               </div>
             ))}
           </div>
@@ -154,7 +156,7 @@ export function MineImpact() {
                 <tr>
                   <Th>Zone</Th>
                   <Th align="right">Rate</Th>
-                  <Th align="right">Lost</Th>
+                  <Th align="right">Foregone zone t</Th>
                   <Th align="right">Value</Th>
                   <Th align="right">Flood margin</Th>
                 </tr>

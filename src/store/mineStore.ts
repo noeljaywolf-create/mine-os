@@ -31,8 +31,7 @@ import {
   type EngineContext,
 } from '../simulation/engine';
 import { detectIncidents, transitionIncident } from '../simulation/incidents';
-import { cloneOverrides } from '../simulation/scenarios';
-import { readSensorValue } from '../simulation/sensors';
+import { cloneOverrides, mergeEngineering } from '../simulation/scenarios';
 import { hasCapability, ROLE_BY_ID, roleName } from '../domain/roles';
 import type { Capability } from '../domain/types';
 
@@ -91,6 +90,7 @@ export interface WorkspaceFilters {
 }
 
 export interface MineState {
+  applyEngineeringOverrides: (patch: Partial<Scenario['overrides']>) => ActionResult;
   mine: MineDefinition;
   graph: DependencyGraph;
   baseAssumptions: Assumptions;
@@ -195,7 +195,7 @@ const PERSONAS: Record<UserRole, string> = {
 const DEMO_EPOCH_MS = Date.UTC(2026, 9, 22, 6, 0, 0);
 
 function deepClone<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T;
+  return structuredClone(value);
 }
 
 function initialTelemetry(mine: MineDefinition): Record<SensorId, TelemetryPoint[]> {
@@ -285,11 +285,16 @@ function advance(state: MineState, steps: number): Partial<MineState> {
     const result = stepWorld(ctx, scenario, world, dt);
     world = result.world;
     stepsTaken += 1;
+    if (world.clock.elapsedSec - lastFrameSimSec >= FRAME_INTERVAL_SEC) {
+      frames.push({ simSec: world.clock.elapsedSec, atMs: world.clock.epochMs + world.clock.elapsedSec * 1000,
+        world: { ...world, history: [] }, incidents: run.incidents });
+      lastFrameSimSec = world.clock.elapsedSec;
+    }
 
     for (const sensor of state.mine.sensors) {
       const sensorState = world.sensors[sensor.id];
       if (!sensorState || sensorState.freshness !== 'live') continue;
-      const value = readSensorValue(state.mine, world, sensor);
+      const value = sensorState.lastValue;
       if (value === null) continue;
       const series = [...(telemetry[sensor.id] ?? [])];
       series.push({
@@ -413,7 +418,7 @@ export const useMineStore = create<MineState>((set, get) => {
         author: 'A. Novak',
         role: 'Dewatering Engineer',
         atMs: DEMO_EPOCH_MS,
-        body: 'Baseline water balance reviewed against the modelled sump geometry. Duty pumping holds level with a small negative net flow on all four sumps.',
+        body: 'Baseline reference uses synthetic stage-storage geometry and calculated pump/system operating points. Review actual flow and motor constraints; these are not field-validated operating duties.',
         decisionId: null,
       },
     ],
@@ -454,7 +459,7 @@ export const useMineStore = create<MineState>((set, get) => {
       const frame = run.frames[state.replayIndex];
       return frame ? frame.world : run.world;
     },
-    can: (capability) => hasCapability(get().role, capability),
+    can: (capability) => hasCapability(get().role, capability) && (!get().replayActive || capability.startsWith('view.') || capability === 'settings.role' || capability === 'report.export'),
 
     // ---------------------------------------------------------- simulation
     tick: (deltaMs) => {
@@ -495,6 +500,7 @@ export const useMineStore = create<MineState>((set, get) => {
 
     runFor: (simSeconds) => {
       const state = get();
+      if (state.replayActive) return;
       const dt = state.getRun().world.clock.stepSec;
       const steps = Math.max(1, Math.round(simSeconds / dt));
       set(advance(state, steps));
@@ -547,12 +553,13 @@ export const useMineStore = create<MineState>((set, get) => {
         createdAtMs: nowMs,
         createdBy: state.actorName,
         overrides: cloneOverrides(parent.overrides),
-        seed: input.seed ?? parent.seed + 1,
+        seed: input.seed ?? parent.seed,
         hypothesis: input.hypothesis,
         tags: ['branch'],
       };
       if (input.overrides) {
         scenario.overrides = {
+          engineering: mergeEngineering(scenario.overrides.engineering, input.overrides.engineering),
           assetOverrides: { ...scenario.overrides.assetOverrides, ...input.overrides.assetOverrides },
           pumpOverrides: { ...scenario.overrides.pumpOverrides, ...input.overrides.pumpOverrides },
           feederOverrides: { ...scenario.overrides.feederOverrides, ...input.overrides.feederOverrides },
@@ -562,6 +569,19 @@ export const useMineStore = create<MineState>((set, get) => {
         };
       }
       const run = makeRun(contextFor(state, scenario), scenario, state.mine);
+      const branchContext = contextFor(state, scenario);
+      run.world = recomputeWorld(branchContext, scenario, deepClone(state.getRun().world));
+      run.world.scenarioId = scenario.id;
+      run.telemetry = deepClone(state.getRun().telemetry);
+      const detection = detectIncidents({ ctx: branchContext, scenario, world: run.world,
+        derived: deriveState(branchContext, scenario, run.world), existing: [], actor: state.actorName, role: roleName(state.role) });
+      run.incidents = detection.incidents;
+      run.world.history = [...run.world.history, { id: `branch-input-${scenario.seed}-${run.world.step}`,
+        atSimSec: run.world.clock.elapsedSec, atMs: run.world.clock.epochMs + run.world.clock.elapsedSec * 1000,
+        type: 'scenario-event', summary: 'Scenario branched with engineering inputs', detail: JSON.stringify(scenario.overrides), evidence: [] }];
+      run.frames = [{ world: deepClone(run.world), simSec: run.world.clock.elapsedSec,
+        atMs: run.world.clock.epochMs + run.world.clock.elapsedSec * 1000, incidents: run.incidents }];
+      run.lastFrameSimSec = run.world.clock.elapsedSec;
       set({
         scenarios: [...state.scenarios, scenario],
         runs: { ...state.runs, [scenario.id]: run },
@@ -585,6 +605,36 @@ export const useMineStore = create<MineState>((set, get) => {
     },
 
     // ---------------------------------------------------------- interventions
+    applyEngineeringOverrides: (patch) => {
+      const state = get();
+      if (!state.can('scenario.edit-assumptions') || state.getScenario().isBaseline || state.replayActive)
+        return { ok: false, message: 'Branch an editable scenario and leave replay before applying engineering changes.' };
+      const scenario = state.getScenario();
+      const overrides = cloneOverrides(scenario.overrides);
+      const engineering = patch.engineering;
+      overrides.engineering = mergeEngineering(overrides.engineering, engineering);
+      for (const [id, values] of Object.entries(patch.pumpOverrides ?? {})) overrides.pumpOverrides[id] = { ...overrides.pumpOverrides[id], ...values };
+      for (const [id, values] of Object.entries(patch.sumpOverrides ?? {})) overrides.sumpOverrides[id] = { ...overrides.sumpOverrides[id], ...values };
+      overrides.feederOverrides = { ...overrides.feederOverrides, ...patch.feederOverrides };
+      overrides.assumptions = { ...overrides.assumptions, ...patch.assumptions };
+      const updated = { ...scenario, overrides };
+      const ctx = contextFor(state, updated);
+      const run = state.getRun();
+      try {
+        const world = recomputeWorld(ctx, updated, run.world);
+        const atSimSec = world.clock.elapsedSec;
+        world.history = [...world.history, { id: `engineering-${world.step}-${run.actions.length}-${world.history.length}`,
+          atSimSec, atMs: world.clock.epochMs + atSimSec * 1000, type: 'scenario-event' as const,
+          summary: 'Engineering intervention applied', detail: JSON.stringify(patch), evidence: [] }];
+        const detection = detectIncidents({ ctx, scenario: updated, world, derived: deriveState(ctx, updated, world),
+          existing: run.incidents, actor: state.actorName, role: roleName(state.role) });
+        set({ scenarios: state.scenarios.map(s => s.id === updated.id ? updated : s),
+          runs: { ...state.runs, [updated.id]: { ...run, world, incidents: detection.incidents } },
+          activity: logActivity(state, 'action', 'Engineering parameters changed; shared kernel recomputed.'),
+          toasts: toast(state, 'success', 'Model recalculated', 'Hydraulics, power, storage and production share these inputs.') });
+        return { ok: true, message: 'Applied to the shared scenario.' };
+      } catch (error) { return { ok: false, message: String(error) }; }
+    },
     setFeederStatus: (feederId, status) => {
       const state = get();
       const requiredCapability: Capability = status === 'energised' ? 'asset.restore' : 'asset.fail';
@@ -613,9 +663,14 @@ export const useMineStore = create<MineState>((set, get) => {
       const ctx = contextFor(state, updated);
       const run = state.getRun();
       const world = recomputeWorld(ctx, updated, run.world);
+      world.history = [...world.history, { id: `feeder-${feederId}-${world.step}-${world.history.length}`, type: 'asset-status-changed',
+        atSimSec: world.clock.elapsedSec, atMs: world.clock.epochMs + world.clock.elapsedSec * 1000,
+        summary: `${feederId} changed to ${status}`, detail: world.feeders[feederId]?.statusReason ?? 'Unknown feeder.', assetId: feederId, evidence: [] }];
+      const detection = detectIncidents({ ctx, scenario: updated, world, derived: deriveState(ctx, updated, world), existing: run.incidents,
+        actor: state.actorName, role: roleName(state.role) });
       set({
         scenarios: state.scenarios.map((s) => (s.id === updated.id ? updated : s)),
-        runs: { ...state.runs, [updated.id]: { ...run, world } },
+        runs: { ...state.runs, [updated.id]: { ...run, world, incidents: detection.incidents } },
         activity: logActivity(state, 'action', `${feeder?.name ?? feederId} set to ${status}.`, [feederId]),
         toasts: toast(
           state,
@@ -799,8 +854,12 @@ export const useMineStore = create<MineState>((set, get) => {
         ...scenario,
         overrides: { ...scenario.overrides, assumptions: { ...scenario.overrides.assumptions, [key]: value } },
       };
+      const run = state.getRun();
+      const world = recomputeWorld(contextFor(state, updated), updated, run.world);
+      if (key === 'timeStepSeconds') world.clock = { ...world.clock, stepSec: Math.max(1, Math.min(300, value)) };
       set({
         scenarios: state.scenarios.map((s) => (s.id === updated.id ? updated : s)),
+        runs: { ...state.runs, [updated.id]: { ...run, world } },
         activity: logActivity(state, 'action', `Assumption ${key} set to ${value}.`, [scenario.id]),
       });
       return { ok: true, message: 'Assumption updated.' };

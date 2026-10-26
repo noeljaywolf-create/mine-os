@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "build:pages": "tsc -b && vite build --mode pages && node scripts/pages-fallback.mjs",
+    "build:publish": "tsc -b && vite build --mode pages --outDir docs && node scripts/pages-fallback.mjs docs",
     "preview": "vite preview",
     "typecheck": "tsc -b --pretty false",
     "lint": "tsc -b --pretty false",

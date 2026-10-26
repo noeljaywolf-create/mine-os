@@ -19,14 +19,17 @@ import {
   Th,
   cx,
 } from '../design-system';
-import { useAssumptions, useDerived, useForecasts, useRun, useSimClock } from '../store/hooks';
+import { useAssumptions, useDerived, useForecasts, useDisplayWorld, useSimClock } from '../store/hooks';
 import { useMineStore as useStore } from '../store/mineStore';
 import { formatDurationHours, formatFlow, formatLevel, formatTimestamp, formatVolume } from '../domain/units';
 import type { PumpMode } from '../domain/types';
+import { HydraulicAnalyser } from '../components/HydraulicAnalyser';
+import { EngineeringBasis } from '../components/EngineeringBasis';
+import { forecastBasis } from '../simulation/analysisEvidence';
 
 export function Dewatering() {
   const mine = useStore((s) => s.mine);
-  const world = useRun().world;
+  const world = useDisplayWorld();
   const derived = useDerived();
   const forecasts = useForecasts();
   const clock = useSimClock();
@@ -58,6 +61,7 @@ export function Dewatering() {
         module={MODULE_BY_ID.dewatering}
         actions={
           <>
+            <EngineeringBasis assetId="analysis:forecast" providedBasis={forecastBasis(forecast)} />
             <Link to="/app/energy" className="text-[10px] text-ink-400 hover:text-ink-100">power demand →</Link>
             <Link to="/app/impact" className="text-[10px] text-ink-400 hover:text-ink-100">production impact →</Link>
             <Link
@@ -103,6 +107,8 @@ export function Dewatering() {
         </div>
       </ModuleHeader>
 
+      <div className="my-2"><EngineeringBasis assetId={sumpId} /></div>
+
       <MetricGrid cols={5}>
         <MetricCell>
           <Metric
@@ -122,9 +128,9 @@ export function Dewatering() {
         </MetricCell>
         <MetricCell>
           <Metric
-            label="Installed capability"
+            label="Conditional hydraulic capability"
             value={formatFlow(available)}
-            hint={`${formatFlow(delivering)} delivering · ${formatFlow(standby)} standby`}
+            hint={`${formatFlow(delivering)} wet-running duty · ${formatFlow(standby)} conditional standby`}
             tone={available < state.inflowM3h ? 'red' : 'green'}
           />
         </MetricCell>
@@ -138,9 +144,9 @@ export function Dewatering() {
         </MetricCell>
         <MetricCell>
           <Metric
-            label="Forecast confidence"
+            label="Input quality index"
             value={`${(forecast.confidence * 100).toFixed(0)}%`}
-            hint={forecast.degradedByInstrumentation ? 'degraded by stale tags' : 'all contributing tags live'}
+            hint={forecast.degradedByInstrumentation ? 'degraded tags; not probability' : 'heuristic index, not probability'}
             tone={forecast.confidence < 0.8 ? 'amber' : 'green'}
           />
         </MetricCell>
@@ -298,8 +304,8 @@ export function Dewatering() {
           <Panel>
             <PanelTitle>Why this forecast moves</PanelTitle>
             <ul className="space-y-1.5 px-3 py-2 text-2xs leading-relaxed text-ink-400">
-              <li>· Level integrates inflow minus outflow every {(100 / 60).toFixed(0)}-second model step, clamped to capacity.</li>
-              <li>· Inflow is sensor-derived; the multiple in the scenario override sits on top.</li>
+              <li>· Level integrates the conservative water network every {world.clock.stepSec}-second model step; overflow is accounted separately.</li>
+              <li>· Inflow is synthetic groundwater/rainfall input plus explicit transfers, not live sensor-derived hydrology.</li>
               <li>· Outflow is limited by pump health, head and electrical availability — not by a nameplate number.</li>
               <li>· The band is a modelled envelope, not a statistical confidence interval, and it is not a percentage of the sump.</li>
             </ul>
@@ -311,6 +317,7 @@ export function Dewatering() {
           </Panel>
         </div>
       </div>
+      <HydraulicAnalyser />
     </div>
   );
 }

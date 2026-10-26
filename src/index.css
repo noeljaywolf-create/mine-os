@@ -2,6 +2,29 @@
 @tailwind components;
 @tailwind utilities;
 
+.schematic-asset > rect {
+  transition: stroke 160ms ease, fill 160ms ease;
+}
+.schematic-asset:hover > rect,
+.schematic-asset:focus-visible > rect {
+  stroke: #a0e8f3;
+  stroke-width: 3px;
+}
+.schematic-viewport {
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+}
+.schematic-flow {
+  animation: schematic-flow 1.4s linear infinite;
+}
+@keyframes schematic-flow {
+  to { stroke-dashoffset: -28; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .schematic-flow { animation: none; }
+  .schematic-asset > rect { transition: none; }
+}
+
 :root {
   color-scheme: dark;
   --hairline: rgba(148, 163, 184, 0.14);

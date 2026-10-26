@@ -15,6 +15,7 @@ import type {
 import type { EngineContext, DerivedState } from './engine';
 import { cascadeEvidence, severityForCriticality } from './propagation';
 import { roleName } from '../domain/roles';
+import { deriveSeed } from './rng';
 
 /**
  * Incident lifecycle.
@@ -62,7 +63,7 @@ export function newIncidentEvent(args: {
   evidence?: EvidenceRef[];
 }): IncidentEvent {
   return {
-    id: `evt-${Math.round(args.atMs)}-${Math.random().toString(36).slice(2, 8)}`,
+    id: `evt-${Math.round(args.atMs)}-${deriveSeed(args.atSimSec, `${args.type}:${args.actor}:${args.summary}:${args.detail}`)}`,
     atMs: args.atMs,
     atSimSec: args.atSimSec,
     type: args.type,
@@ -159,7 +160,7 @@ export function buildDetectionCandidates(
       {
         id: `hyp-direct-${root}`,
         statement: `${rootAsset?.name ?? root} is unavailable in the modelled state.`,
-        confidence: derived.rootCauseOf[assetId] ? 0.35 : stale.length > 0 ? 0.55 : 0.85,
+        confidence: null,
         supportingEvidence: evidence.slice(0, 3),
         contradictingEvidence: [],
         alternatives: derived.rootCauseOf[assetId]
@@ -172,7 +173,7 @@ export function buildDetectionCandidates(
       hypotheses.push({
         id: `hyp-dependency-${root}`,
         statement: `${assetName(ctx, assetId)} lost function because ${assetName(ctx, root)} became unavailable.`,
-        confidence: stale.length > 0 ? 0.6 : 0.8,
+        confidence: null,
         supportingEvidence: evidence.filter((e) => e.kind === 'dependency'),
         contradictingEvidence: [],
         alternatives: ['A simultaneous independent failure on the dependent asset cannot be excluded.'],
@@ -256,7 +257,7 @@ export function buildDetectionCandidates(
         {
           id: `hyp-water-${sump.id}`,
           statement: `Inflow exceeds available pumping capability at ${sump.name}.`,
-          confidence: 0.8,
+          confidence: null,
           supportingEvidence: evidence,
           contradictingEvidence: [],
           alternatives: [
@@ -294,7 +295,7 @@ export function buildDetectionCandidates(
         {
           id: `hyp-sensor-${sensor.id}`,
           statement: `Instrumentation or communications failure on ${sensor.name}; the process itself may be unchanged.`,
-          confidence: 0.7,
+          confidence: null,
           supportingEvidence: [],
           contradictingEvidence: [],
           alternatives: ['The tag may be correctly reporting a stopped process — a physical check is required.'],
@@ -621,8 +622,7 @@ export function incidentNarrative(ctx: EngineContext, incident: Incident): strin
     if (asset) lines.push(`Root asset: ${asset.name} [${asset.tag}] — ${asset.description}`);
   }
   if (incident.hypotheses.length > 0) {
-    const top = [...incident.hypotheses].sort((a, b) => b.confidence - a.confidence)[0];
-    lines.push(`Leading hypothesis (${(top.confidence * 100).toFixed(0)}% modelled confidence): ${top.statement}`);
+    lines.push(`Unranked hypotheses (no calibrated probabilities): ${incident.hypotheses.map(h => h.statement).join('; ')}`);
   }
   lines.push(
     `${incident.events.length} audit events recorded, ${incident.evidence.length} evidence artefacts retained.`,

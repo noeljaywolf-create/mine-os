@@ -1,4 +1,6 @@
 import { useMemo } from 'react';
+import { Link } from 'react-router-dom';
+import { EngineeringBasis } from './EngineeringBasis';
 import {
   AlertTriangle,
   ArrowDownRight,
@@ -8,7 +10,7 @@ import {
   X,
 } from 'lucide-react';
 import { useMineStore } from '../store/mineStore';
-import { useDerived, useActiveScenario, useRun, useCapabilities } from '../store/hooks';
+import { useDerived, useActiveScenario, useRun, useCapabilities, useDisplayWorld } from '../store/hooks';
 import {
   Badge,
   Button,
@@ -41,6 +43,7 @@ export function AssetInspector({ assetId, embedded }: { assetId?: string | null;
   const mine = useMineStore((s) => s.mine);
   const derived = useDerived();
   const run = useRun();
+  const displayWorld = useDisplayWorld();
   const scenario = useActiveScenario();
   const capabilities = useCapabilities();
   const selectAsset = useMineStore((s) => s.selectAsset);
@@ -128,8 +131,8 @@ export function AssetInspector({ assetId, embedded }: { assetId?: string | null;
   const sump = mine.sumps.find((s) => s.id === asset.id);
   const zone = mine.zones.find((z) => z.id === asset.id);
   const pumpState = pump ? derived.pumpStates[pump.id] : undefined;
-  const sumpState = sump ? run.world.sumps[sump.id] : undefined;
-  const zoneState = zone ? run.world.zones[zone.id] : undefined;
+  const sumpState = sump ? displayWorld.sumps[sump.id] : undefined;
+  const zoneState = zone ? displayWorld.zones[zone.id] : undefined;
   const immutable = scenario.isBaseline;
 
   const sensorsForAsset = linkedSensors;
@@ -137,6 +140,7 @@ export function AssetInspector({ assetId, embedded }: { assetId?: string | null;
 
   return (
     <div className={cx('flex h-full flex-col', embedded ? '' : 'bg-ink-900/95')}>
+      <div className="flex flex-wrap gap-2 p-2"><EngineeringBasis assetId={asset.id} />{pump && <Link to="/app/engineering?view=hydraulics" className="text-xs text-signal-cyanBright">Open interactive pump model →</Link>}</div>
       <header className="flex shrink-0 items-start justify-between gap-2 border-b border-[color:var(--hairline)] px-3.5 py-3">
         <div className="min-w-0">
           <div className="label-micro">{asset.kind} · {asset.system}</div>

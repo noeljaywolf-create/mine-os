@@ -9,6 +9,7 @@ import type {
   Sump,
 } from '../domain/types';
 import type { MineDefinition, PlantDefinition } from '../domain/mine';
+import type { MaterialHandlingModel } from '../domain/engineering';
 
 /**
  * SYNTHETIC MINE — "Kestrel Ridge Underground".
@@ -167,7 +168,7 @@ const sumps: Sump[] = [
     floorElevationM: -514,
     areaM2: 70,
     baselineInflowM3h: 95,
-    initialFillRatio: 0.25,
+    initialFillRatio: 0.20,
     rainfallSensitiveFraction: 0.3,
     protectedElevationM: -500,
     thresholds: [
@@ -190,7 +191,7 @@ const sumps: Sump[] = [
     capacityM3: 2000,
     floorElevationM: -680,
     areaM2: 100,
-    baselineInflowM3h: 230,
+    baselineInflowM3h: 200,
     initialFillRatio: 0.3,
     rainfallSensitiveFraction: 0.25,
     protectedElevationM: -664,
@@ -364,6 +365,12 @@ const pumps: Pump[] = [
     twinPosition: { x: 910, y: 720 },
     notes: 'Main dewatering path for the lower level. Discharges to the main riser.',
     commissionedYear: 2019,
+  },
+  {
+    id: 'pmp-204', name: 'P-204 Hypothetical Additional North Standby', sumpId: 'smp-201', feederId: 'fdr-02',
+    ratedFlowM3h: 260, ratedHeadM: 160, health: 0.96, efficiency: 0.8, mode: 'standby',
+    powerRequiredKw: 110, liftHeadM: 140, twinPosition: { x: 680, y: 480 }, commissionedYear: 2026,
+    installed: false, notes: 'Uninstalled canonical planning slot. Only a hypothetical additional-pump scenario can make this unit dispatchable. Shared F-02 and shared main; no electrical diversity is implied.',
   },
 ];
 
@@ -806,7 +813,7 @@ const assets: Asset[] = [
     'dewatering',
     'lvl-surface',
     'RISER.FLOW.TOTAL',
-    'Vertical dewatering riser carrying discharge from the middle and lower sumps to the surface settling circuit.',
+    'Abstract staged discharge boundary. Station lift is to an intermediate receiving reservoir; full-depth riser and series-train design require a separate validated design.',
     { x: 540, y: 330 },
     'Synthetic Civil Works',
     'Riser 1',
@@ -886,6 +893,7 @@ const dependencies: AssetDependency[] = [
   dependency('dep-f02-p202', 'fdr-02', 'pmp-202', 'powered_by', 'P-202 shares F-02 with P-201, so it gives no power diversity.', 4),
   dependency('dep-f02-p203', 'fdr-02', 'pmp-203', 'powered_by', 'P-203 is fed from F-02; the south sump has no alternate supply.', 5),
   dependency('dep-f03-p301', 'fdr-03', 'pmp-301', 'powered_by', 'P-301 is fed from F-03; no alternate supply is modelled.', 5),
+  dependency('dep-f02-p204', 'fdr-02', 'pmp-204', 'powered_by', 'Hypothetical P-204 installation still shares F-02; installation and dispatch must be explicitly enabled.', 4),
   dependency('dep-f01-plant', 'fdr-01', 'plant-01', 'powered_by', 'The processing plant is supplied from F-01.', 5),
 
   // Pump / sump hydraulics
@@ -893,6 +901,7 @@ const dependencies: AssetDependency[] = [
   dependency('dep-s101-p102', 'smp-101', 'pmp-102', 'pumps_from', 'P-102 draws from S-101.', 3),
   dependency('dep-s201-p201', 'smp-201', 'pmp-201', 'pumps_from', 'P-201 draws from S-201.', 5),
   dependency('dep-s201-p202', 'smp-201', 'pmp-202', 'pumps_from', 'P-202 draws from S-201.', 4),
+  dependency('dep-s201-p204', 'smp-201', 'pmp-204', 'pumps_from', 'Hypothetical P-204 draws from S-201 only when installed in the scenario.', 4),
   dependency('dep-s202-p203', 'smp-202', 'pmp-203', 'pumps_from', 'P-203 draws from S-202.', 5),
   dependency('dep-s301-p301', 'smp-301', 'pmp-301', 'pumps_from', 'P-301 draws from S-301.', 5),
 
@@ -978,21 +987,45 @@ const surfaceFacilities = [
   },
 ];
 
+const materialHandling: MaterialHandlingModel = {
+  routes: [
+    { id: 'mat-north', name: 'North primary ore route', zoneIds: ['zone-north'], capacityTph: 700, defaultAvailable: true, alternative: false },
+    { id: 'mat-south', name: 'South primary ore route', zoneIds: ['zone-south'], capacityTph: 600, defaultAvailable: true, alternative: false },
+    { id: 'mat-crosscut', name: 'Shared alternative crosscut', zoneIds: ['zone-north', 'zone-south'], capacityTph: 250, defaultAvailable: false, alternative: true },
+  ], hoistCapacityTph: 1200, bufferCapacityTonnes: 1120, initialBufferTonnes: 560,
+};
+
 export const MINE: MineDefinition = {
+  materialHandling,
   id: 'mine-kestrel-ridge',
   name: 'Kestrel Ridge Underground',
   location: 'Synthetic demonstration site',
   description:
-    'Three-level underground mine with two active production orebodies, four dewatering sumps, six pumps, three 11 kV feeders and a surface processing plant. Built to exercise cross-system dependency reasoning.',
+    'Three-level underground mine with two production orebodies, four sumps, six installed pumps plus one explicit hypothetical planning slot, three 11 kV feeders and a surface processing plant.',
   geometryDisclaimer: GEOMETRY_DISCLAIMER,
   levels,
   zones,
-  sumps,
+  sumps: sumps.map(s => ({ ...s, stageStorage: [
+    { levelM: 0, volumeM3: 0 },
+    { levelM: s.capacityM3 / s.areaM2 * 0.5, volumeM3: s.capacityM3 * 0.5 },
+    { levelM: s.capacityM3 / s.areaM2 * 0.75, volumeM3: s.capacityM3 * 0.8 },
+    { levelM: s.capacityM3 / s.areaM2, volumeM3: s.capacityM3 },
+  ] })),
   pumps,
   feeders,
   sensors,
-  assets,
-  dependencies,
+  assets: [...assets, ...materialHandling.routes.map((r, i) => ({
+    ...assetBase(r.id, r.name, 'infrastructure', 'production', 'lvl-480', `${r.id}.FLOW`,
+      'Synthetic capacity-limited ore movement route; geometry and transport capacities require site verification.',
+      { x: 320 + i * 250, y: 600 }, 'Synthetic material handling', 'Route capacity model', 2026),
+    attributes: { capacityTph: r.capacityTph, alternative: r.alternative },
+  })), assetBase('mat-hoist', 'Ore movement / hoist bottleneck', 'infrastructure', 'production', 'lvl-surface', 'MAT.HOIST.FLOW',
+    'Synthetic common material-handling capacity. This is not a hoist mechanical/electrical design.', { x: 980, y: 560 }, 'Synthetic material handling', 'Capacity model', 2026)],
+  dependencies: [...dependencies,
+    ...materialHandling.routes.flatMap(r => [
+      ...r.zoneIds.map(z => dependency(`dep-${z}-${r.id}`, z, r.id, 'feeds', 'Ore movement uses an available capacity-limited primary or explicitly enabled alternate route.', 4)),
+      dependency(`dep-${r.id}-hoist`, r.id, 'mat-hoist', 'feeds', 'Route flows share a common hoisting/material-handling limit.', 4),
+    ]), dependency('dep-hoist-plant', 'mat-hoist', plant.id, 'feeds', 'Finite buffer inventory delays processing consequences after material-handling interruption.', 5)],
   plant,
   orebodyOutline,
   surfaceFacilities,

@@ -26,8 +26,25 @@ import { sumpOutflowM3h } from './plant';
 
 /** Water depth above the sump floor for a stored volume, using the modelled plan area. */
 export function sumpLevelM(sump: Sump, volumeM3: number): number {
+  if (sump.stageStorage) return interpolateStage(sump.stageStorage, volumeM3, 'volumeM3', 'levelM');
   if (sump.areaM2 <= 0) return 0;
   return Math.max(0, volumeM3) / sump.areaM2;
+}
+
+function interpolateStage(points: Array<{ levelM: number; volumeM3: number }>, value: number,
+  x: 'levelM' | 'volumeM3', y: 'levelM' | 'volumeM3'): number {
+  if (points.length < 2 || points[0].levelM !== 0 || points[0].volumeM3 !== 0 ||
+    points.some((p, i) => !Number.isFinite(p.levelM + p.volumeM3) || (i > 0 &&
+      (p.levelM <= points[i - 1].levelM || p.volumeM3 <= points[i - 1].volumeM3))))
+    throw new Error('Stage-storage requires monotone nonnegative points starting at (0,0).');
+  const end = points.findIndex((p, i) => i > 0 && value <= p[x]);
+  const i = end < 0 ? points.length - 1 : end;
+  const a = points[i - 1]; const b = points[i];
+  if (value > b[x]) throw new Error('Stage-storage extrapolation unsupported.');
+  return a[y] + (Math.max(0, value) - a[x]) / (b[x] - a[x]) * (b[y] - a[y]);
+}
+export function sumpVolumeAtLevel(sump: Sump, levelM: number): number {
+  return sump.stageStorage ? interpolateStage(sump.stageStorage, levelM, 'levelM', 'volumeM3') : levelM * sump.areaM2;
 }
 
 /** Absolute elevation of the water surface, relative to mine datum. */
@@ -44,6 +61,9 @@ export interface WaterStepInput {
 }
 
 export interface WaterStepResult {
+  overflowM3: number;
+  actualOutM3: number;
+  residualM3: number;
   volumeM3: number;
   levelM: number;
   netFlowM3h: number;
@@ -61,13 +81,19 @@ export interface WaterStepResult {
  */
 export function integrateWater(input: WaterStepInput): WaterStepResult {
   const { volumeM3, inflowM3h, outflowM3h, dtSec, capacityM3 } = input;
+  if ([volumeM3, inflowM3h, outflowM3h, dtSec, capacityM3].some(x => !Number.isFinite(x) || x < 0) || volumeM3 > capacityM3)
+    throw new Error('Water integrator requires finite nonnegative SI inputs within capacity.');
   const netM3h = inflowM3h - outflowM3h;
   const deltaM3 = (netM3h / 3600) * dtSec;
   const raw = volumeM3 + deltaM3;
   const clampedHigh = raw > capacityM3;
   const clampedLow = raw < 0;
   const next = Math.min(Math.max(raw, 0), Math.max(0, capacityM3));
+  const actualOutM3 = Math.min(outflowM3h * dtSec / 3600, volumeM3 + inflowM3h * dtSec / 3600);
+  const overflowM3 = Math.max(0, raw - capacityM3);
   return {
+    actualOutM3, overflowM3,
+    residualM3: volumeM3 + inflowM3h * dtSec / 3600 - actualOutM3 - overflowM3 - next,
     volumeM3: next,
     levelM: 0,
     netFlowM3h: netM3h,
@@ -117,7 +143,7 @@ export function timeToLevelSeconds(
   netFlowM3h: number,
   targetLevelM: number,
 ): number | null {
-  const targetVolume = targetLevelM * sump.areaM2;
+  const targetVolume = sumpVolumeAtLevel(sump, targetLevelM);
   if (currentVolumeM3 >= targetVolume) return 0;
   if (netFlowM3h <= 0) return null;
   return ((targetVolume - currentVolumeM3) / netFlowM3h) * 3600;
@@ -130,6 +156,8 @@ export function computeSumpState(
   inflowM3h: number,
   outflowM3h: number,
 ): SumpRuntimeState {
+  if (!Number.isFinite(volumeM3 + inflowM3h + outflowM3h) || volumeM3 < 0 || volumeM3 > sump.capacityM3 || inflowM3h < 0 || outflowM3h < 0)
+    throw new Error('Sump state requires bounded nonnegative finite storage and flows.');
   const levelM = sumpLevelM(sump, volumeM3);
   const breach = breachedThreshold(sump, levelM);
   const net = inflowM3h - outflowM3h;
@@ -245,6 +273,7 @@ export function projectSumpVolume(args: {
 
 /** First time (seconds) the trajectory reaches a level, using linear interpolation. */
 export function crossingTimeSeconds(points: ForecastPoint[], targetLevelM: number): number | null {
+  if (points[0]?.levelM >= targetLevelM) return points[0].tSec;
   for (let i = 1; i < points.length; i += 1) {
     const prev = points[i - 1];
     const curr = points[i];

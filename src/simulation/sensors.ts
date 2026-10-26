@@ -82,9 +82,57 @@ export function computeSensorStates(
 ): Record<SensorId, SensorState> {
   const result: Record<SensorId, SensorState> = {};
   for (const sensor of mine.sensors) {
-    result[sensor.id] = computeSensorFreshness(sensor, world.clock.elapsedSec, overrides);
+    const state = computeSensorFreshness(sensor, world.clock.elapsedSec, overrides);
+    const fault = overrides.engineering?.telemetryFaults?.[sensor.id] ?? 'normal';
+    const truth = readSensorValue(mine, world, sensor);
+    const previous = world.sensors[sensor.id];
+    state.lastValue = state.freshness === 'unavailable' ? null : truth;
+    if (fault === 'missing') {
+      state.lastValue = null; state.freshness = 'unavailable'; state.confidence = 0;
+      state.note = 'Simulated missing measurement. Physical model continues; no observation is substituted.';
+    } else if (fault === 'delayed') {
+      const sample = [...(world.sensorSampleHistory?.[sensor.id] ?? [])].reverse().find(s => s.atSec <= world.clock.elapsedSec - 180);
+      state.lastValue = sample?.value ?? null;
+      state.ageSec = sample ? world.clock.elapsedSec - sample.atSec : world.clock.elapsedSec;
+      state.freshness = sample ? 'stale' : 'unavailable'; state.confidence = sample ? 0.2 : 0;
+      state.note = sample ? 'Synthetic sample delivered with a configured 180 s delay.' : 'No sufficiently old sample exists; delayed observation is missing.';
+    } else if (fault === 'frozen' || overrides.sensorOverrides[sensor.id]?.stale) {
+      state.lastValue = previous?.lastValue ?? truth;
+      state.ageSec = (previous?.ageSec ?? 0) + (world.clock.stepSec || 60);
+      state.freshness = state.ageSec > sensor.stalenessThresholdSec * 3 ? 'expired' : 'stale';
+      state.confidence = 0.2;
+      state.note = 'Synthetic held/delayed sample. Verify with an independent measurement.';
+    } else if ((fault === 'scaled' || fault === 'contradictory') && truth !== null) {
+      state.lastValue = fault === 'scaled' ? truth * 1.25 : truth + (sensor.kind === 'level' ? 2 : truth * 0.3);
+      state.confidence *= 0.4;
+      state.note = 'Injected measurement inconsistency; compare independent observations and calibration.';
+    }
+    const feedback = overrides.engineering?.statusFeedback?.[sensor.assetId];
+    const actualMode = world.pumps[sensor.assetId]?.mode;
+    if (feedback && feedback !== 'unknown' && actualMode && feedback !== actualMode) {
+      state.confidence *= 0.5;
+      state.note = `${state.note ?? ''} Synthetic equipment-status feedback contradicts commanded/modelled mode.`;
+    }
+    result[sensor.id] = state;
   }
+  if (overrides.engineering?.redundantSensor) result['independent-level-smp-201'] = {
+    freshness: 'live', lastValue: world.sumps['smp-201']?.levelM ?? null, ageSec: 0, confidence: 0.98,
+    note: 'Hypothetical independent synthetic level verification; not an installed live instrument.' };
   return result;
+}
+
+export function evidenceQualityReport(mine: MineDefinition, world: WorldState, overrides: ScenarioOverride) {
+  return mine.sensors.map(sensor => {
+    const state = world.sensors[sensor.id]; const expected = readSensorValue(mine, world, sensor);
+    const residual = state?.lastValue != null && expected !== null ? state.lastValue - expected : null;
+    const tolerance = expected === null ? 0 : Math.max(0.02, Math.abs(expected) * sensor.accuracyPct / 100);
+    return { id: sensor.id, observed: state?.lastValue ?? null, expected, residual, unit: sensor.unit,
+      disposition: !state || state.lastValue === null ? 'Missing — independent verification required'
+        : state.freshness !== 'live' ? 'Aged measurement — reduced evidence quality'
+        : residual !== null && Math.abs(residual) > tolerance ? 'Contradicts current numerical truth — check calibration/scaling'
+        : 'Within synthetic measurement tolerance',
+      inspection: overrides.engineering?.telemetryFaults?.[sensor.id] === 'scaled' ? 'Check engineering-unit scaling against independent instrument.' : 'Verify timestamp, link, calibration and independent observation.' };
+  });
 }
 
 /**
@@ -107,14 +155,15 @@ export function readSensorValue(
     }
     case 'flow': {
       const pump = mine.pumps.find((p) => p.id === sensor.assetId);
-      if (pump) return world.pumps[pump.id]?.flowM3h ?? null;
+      if (pump) return world.pumps[pump.id]?.deliveredFlowM3h ?? world.pumps[pump.id]?.flowM3h ?? null;
       return null;
     }
     case 'power': {
       const feeder = mine.feeders.find((f) => f.id === sensor.assetId);
       if (feeder) {
         const state = world.feeders[feeder.id];
-        return state ? state.connectedLoadKw * state.supplyRatio : null;
+        return state ? mine.pumps.filter(p => p.feederId === feeder.id).reduce((kw, p) => kw +
+          (world.pumps[p.id]?.averageInputPowerKw ?? world.pumps[p.id]?.powerKw ?? 0), 0) + (state.servicesAllocatedKw ?? 0) : null;
       }
       return null;
     }
@@ -132,7 +181,7 @@ export function readSensorValue(
       const pump = mine.pumps.find((p) => p.id === sensor.assetId);
       if (!pump) return null;
       const state = world.pumps[pump.id];
-      const health = pump.health;
+      const health = state?.condition ?? pump.health;
       const running = state?.mode === 'running';
       const base = running ? 2.4 : 0.4;
       return base + (1 - health) * 9.5 + (state?.dutyFactor ?? 0) * 0.8;
@@ -142,7 +191,7 @@ export function readSensorValue(
       if (!pump) return null;
       const state = world.pumps[pump.id];
       const heat = state?.mode === 'running' ? 38 : 24;
-      return heat + (1 - pump.health) * 26;
+      return heat + (1 - (state?.condition ?? pump.health)) * 26;
     }
     default:
       void asset;

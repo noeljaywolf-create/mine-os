@@ -8,6 +8,7 @@ import type {
   Sensor,
   Sump,
 } from './types';
+import type { MaterialHandlingModel } from './engineering';
 
 /**
  * A processing facility modelled as an asset with its own production model.
@@ -32,6 +33,7 @@ export interface PlantDefinition {
  * synthetic — a schematic arrangement for demonstration, not a surveyed mine.
  */
 export interface MineDefinition {
+  materialHandling?: MaterialHandlingModel;
   id: string;
   name: string;
   location: string;
