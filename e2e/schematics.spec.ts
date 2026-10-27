@@ -36,13 +36,46 @@ test('schematic cards stay separated, labels fit, and selection links operating 
   await expect(page.getByRole('button', { name: 'run', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Electrical single-line twin', exact: true }).click();
   await expect(svg.locator('[data-schematic-node="pmp-201"]')).toHaveAttribute('stroke-width', '2');
+  await page.getByRole('button', { name: 'Reset', exact: true }).click();
   await page.getByRole('button', { name: 'Zoom in schematic' }).click();
-  await expect(page.getByRole('group', { name: 'Schematic zoom controls' })).toContainText('120%');
+  await expect(page.getByRole('group', { name: 'Schematic zoom controls' })).toContainText('125%');
   await page.getByRole('button', { name: 'Fit width', exact: true }).click();
-  await expect(svg).toHaveAttribute('width', '100%');
+  await expect(page.getByRole('button', { name: 'Fit width', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Reset', exact: true }).click();
   await expect(page.getByRole('group', { name: 'Schematic zoom controls' })).toContainText('100%');
   await expect(page.locator('.react-flow__edge-path').first()).toBeAttached();
+});
+
+test('fit centers the entire drawing and zooming out preserves its viewport center', async ({ page }) => {
+  await page.goto('/app/digital-twin');
+  await page.getByRole('button', { name: 'Ore movement twin', exact: true }).click();
+  const viewport = page.getByTestId('schematic-viewport');
+  const measure = () => viewport.evaluate(el => {
+    const svg = el.querySelector('svg')!; const drawing = svg.getBoundingClientRect(); const bounds = el.getBoundingClientRect();
+    const left = bounds.left + el.clientLeft; const top = bounds.top + el.clientTop;
+    return { x: (left + el.clientWidth / 2 - drawing.left) / drawing.width,
+      y: (top + el.clientHeight / 2 - drawing.top) / drawing.height,
+      fits: drawing.left >= left && drawing.top >= top && drawing.right <= left + el.clientWidth + 1 && drawing.bottom <= top + el.clientHeight + 1 };
+  });
+  await expect.poll(async () => (await measure()).fits).toBe(true);
+  expect((await measure()).x).toBeCloseTo(0.5, 2);
+  expect((await measure()).y).toBeCloseTo(0.5, 2);
+  const initial = parseInt(await page.getByLabel('Schematic zoom level', { exact: true }).innerText(), 10);
+  for (let i = 0; i < 4; i++) await page.getByRole('button', { name: 'Zoom out schematic' }).click();
+  expect(parseInt(await page.getByLabel('Schematic zoom level', { exact: true }).innerText(), 10)).toBeLessThan(initial);
+  expect((await measure()).x).toBeCloseTo(0.5, 2);
+  expect((await measure()).y).toBeCloseTo(0.5, 2);
+  await page.getByRole('button', { name: 'Reset', exact: true }).click();
+  await viewport.evaluate(el => { el.scrollLeft += 100; el.scrollTop += 40; });
+  const before = await measure();
+  await page.getByRole('button', { name: 'Zoom in schematic' }).click();
+  expect((await measure()).x).toBeCloseTo(before.x, 2);
+  expect((await measure()).y).toBeCloseTo(before.y, 2);
+  await page.getByRole('button', { name: 'Fit diagram', exact: true }).click();
+  await expect.poll(async () => (await measure()).fits).toBe(true);
+  await page.setViewportSize({ width: 768, height: 900 });
+  await expect.poll(async () => (await measure()).fits).toBe(true);
+  expect((await measure()).x).toBeCloseTo(0.5, 2);
 });
 
 test('schematics contain drawing overflow at mobile, tablet and desktop sizes', async ({ page }) => {

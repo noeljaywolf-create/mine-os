@@ -443,6 +443,7 @@ export function buildModelChecks(
 }
 
 export interface AnalyticsBundle {
+  sensitivityComputed?: boolean;
   waterBalance: WaterBalanceRow[];
   pumpPerformance: PumpPerformanceRow[];
   energy: EnergySummary;
@@ -465,6 +466,7 @@ export function buildAnalytics(args: {
   forecasts: Record<SumpId, SumpForecastResult>;
   incidents: Incident[];
   assumptions: Assumptions;
+  includeSensitivity?: boolean;
 }): AnalyticsBundle {
   const elapsedHours = args.world.clock.elapsedSec / 3600;
   const waterBalance = buildWaterBalance(args.ctx, args.scenario, args.world, args.derived, args.forecasts);
@@ -472,7 +474,7 @@ export function buildAnalytics(args: {
   const energy = buildEnergySummary(pumpPerformance, args.assumptions);
   const zones = buildZonePerformance(args.ctx, args.world, args.forecasts);
   const reliability = buildReliability(args.ctx, args.derived);
-  const sensitivity = buildSensitivity({
+  const sensitivity = args.includeSensitivity === false ? [] : buildSensitivity({
     ctx: args.ctx,
     scenario: args.scenario,
     world: args.world,
@@ -492,6 +494,7 @@ export function buildAnalytics(args: {
     zones,
     reliability,
     sensitivity,
+    sensitivityComputed: args.includeSensitivity !== false,
     incidents,
     modelChecks,
     elapsedHours,

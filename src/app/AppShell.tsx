@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
   ChevronRight,
@@ -19,6 +19,9 @@ import { useMineStore, SIM_SECONDS_PER_REAL_SECOND } from '../store/mineStore';
 import { useActiveScenario, useCapabilities, useIncidents, useSimClock } from '../store/hooks';
 import { Badge, Button, IconButton, Select, cx } from '../design-system';
 import { AssetInspector } from '../components/AssetInspector';
+import { AnalysisLoading, AnalysisStatus } from '../components/AnalysisFeedback';
+import { EngineeringErrorBoundary } from '../components/EngineeringErrorBoundary';
+import { analysisScope, cancelOtherAnalysisScopes } from '../store/analysisJobs';
 import { SimulationBanner } from '../components/SimulationBanner';
 import { Toasts } from '../components/Toasts';
 import { MODULES, MODULE_GROUPS, moduleByPath } from './modules';
@@ -61,7 +64,8 @@ export function AppShell() {
   useEffect(() => {
     setNavOpen(false);
     setScenarioOpen(false);
-  }, [location.pathname]);
+    cancelOtherAnalysisScopes(analysisScope());
+  }, [location.pathname, location.search]);
 
   useEffect(() => {
     if (selection.assetId) setInspectorOpen(true);
@@ -318,7 +322,10 @@ export function AppShell() {
 
         <main className="min-w-0 flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-[1560px] px-3 py-3 md:px-4 md:py-4">
-            <Outlet />
+            <AnalysisStatus />
+            <EngineeringErrorBoundary key={location.pathname + location.search}>
+              <Suspense fallback={<AnalysisLoading />}><Outlet /></Suspense>
+            </EngineeringErrorBoundary>
           </div>
         </main>
 

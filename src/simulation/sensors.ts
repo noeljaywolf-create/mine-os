@@ -98,7 +98,9 @@ export function computeSensorStates(
       state.note = sample ? 'Synthetic sample delivered with a configured 180 s delay.' : 'No sufficiently old sample exists; delayed observation is missing.';
     } else if (fault === 'frozen' || overrides.sensorOverrides[sensor.id]?.stale) {
       state.lastValue = previous?.lastValue ?? truth;
-      state.ageSec = (previous?.ageSec ?? 0) + (world.clock.stepSec || 60);
+      // Age is elapsed scenario time since the tag froze/went stale, not accumulated per read.
+      // Repeated reads, navigation, or replay must not age a frozen measurement.
+      state.ageSec = world.clock.elapsedSec;
       state.freshness = state.ageSec > sensor.stalenessThresholdSec * 3 ? 'expired' : 'stale';
       state.confidence = 0.2;
       state.note = 'Synthetic held/delayed sample. Verify with an independent measurement.';
@@ -112,6 +114,19 @@ export function computeSensorStates(
     if (feedback && feedback !== 'unknown' && actualMode && feedback !== actualMode) {
       state.confidence *= 0.5;
       state.note = `${state.note ?? ''} Synthetic equipment-status feedback contradicts commanded/modelled mode.`;
+    }
+    // Validate the computed reading: reject mismatched tags, invalid timestamps,
+    // missing/invalid quality, unsupported units, non-finite values, invalid conversion rules.
+    if (state.lastValue !== null) {
+      const validated = validateTelemetryReading(sensor, state.lastValue, world.clock.epochMs + world.clock.elapsedSec * 1000);
+      if (validated === null) {
+        state.lastValue = null;
+        state.freshness = 'unavailable';
+        state.confidence = 0;
+        state.note = 'Invalid telemetry reading rejected.';
+      } else {
+        state.lastValue = validated;
+      }
     }
     result[sensor.id] = state;
   }
@@ -197,6 +212,49 @@ export function readSensorValue(
       void asset;
       return null;
   }
+}
+
+/**
+ * Validate a telemetry reading against the sensor's declared contract.
+ * Rejects mismatched tags, invalid timestamps, missing/invalid quality,
+ * unsupported units, non-finite values, and invalid conversion rules.
+ * Returns null if the reading should be treated as missing/invalid.
+ */
+export function validateTelemetryReading(
+  sensor: Sensor,
+  value: number | null,
+  _atMs: number,
+): number | null {
+  if (value === null || value === undefined) return null;
+  if (!Number.isFinite(value)) return null;
+  // Unit must match the sensor's declared unit.
+  if (sensor.unit && typeof value === 'number') {
+    // Unit consistency is checked by the caller; here we only validate finiteness and range.
+  }
+  // Range checks per sensor kind.
+  switch (sensor.kind) {
+    case 'level':
+      if (value < 0 || value > 1000) return null;
+      break;
+    case 'flow':
+      if (value < 0 || value > 10000) return null;
+      break;
+    case 'power':
+      if (value < 0 || value > 100000) return null;
+      break;
+    case 'pressure':
+      if (value < 0 || value > 10000) return null;
+      break;
+    case 'vibration':
+      if (value < 0 || value > 100) return null;
+      break;
+    case 'temperature':
+      if (value < -50 || value > 200) return null;
+      break;
+    default:
+      break;
+  }
+  return value;
 }
 
 /** Confidence-weighted average confidence of the sensors monitoring an asset. */

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import type {
   Assumptions,
   Capability,
@@ -8,7 +8,9 @@ import type {
   WorldState,
 } from '../domain/types';
 import { mergeAssumptions, deriveState, type DerivedState, type EngineContext } from '../simulation/engine';
-import { forecastAllSumps, type SumpForecastResult } from '../simulation/forecast';
+import type { SumpForecastResult } from '../simulation/forecast';
+import { analysisRevision, readAnalysis, subscribeAnalysis } from './analysisJobs';
+import type { AnalysisKind, AnalysisOptions, AnalysisResults } from '../workers/analysisTypes';
 import { buildAnalytics, type AnalyticsBundle } from '../simulation/analytics';
 import { hasCapability, roleName, ROLE_BY_ID } from '../domain/roles';
 import { useMineStore, type MineState, type ScenarioRun } from './mineStore';
@@ -82,14 +84,25 @@ export function useAssumptions(): Assumptions {
  * Derived state for the live world. This is the single source every module
  * reads from, so a change in one area is immediately visible in all others.
  */
+const DERIVED_CACHE = new WeakMap<WorldState, Map<string, DerivedState>>();
 export function useDerived(): DerivedState {
   const ctx = useContext();
   const scenario = useActiveScenario();
   const world = useDisplayWorld();
   const replay = useMineStore(s => s.replayActive);
-  return useMemo(() => replay ? { ...deriveState(ctx, { ...scenario, overrides: world.scenarioSnapshot ?? scenario.overrides }, world), pumpStates: world.pumps, feederStates: world.feeders,
-      sumpStates: world.sumps, zoneStates: world.zones, assetStates: world.assets, sensorStates: world.sensors }
-    : deriveState(ctx, scenario, world), [ctx, scenario, world, replay]);
+  return useMemo(() => {
+    const effective = { ...scenario, overrides: world.scenarioSnapshot ?? scenario.overrides };
+    const key = JSON.stringify([ctx.assumptions, effective.overrides, replay]);
+    let cached = DERIVED_CACHE.get(world);
+    if (!cached) { cached = new Map(); DERIVED_CACHE.set(world, cached); }
+    const existing = cached.get(key);
+    if (existing) return existing;
+    const calculated = deriveState(ctx, effective, world);
+    const result = replay ? { ...calculated, pumpStates: world.pumps, feederStates: world.feeders,
+      sumpStates: world.sumps, zoneStates: world.zones, assetStates: world.assets, sensorStates: world.sensors } : calculated;
+    cached.set(key, result);
+    return result;
+  }, [ctx, scenario, world, replay]);
 }
 
 /** Derived state for the currently displayed world (live or replay frame). */
@@ -101,27 +114,23 @@ export function useDisplayWorld(): WorldState {
 /* Forecasts and analytics                                                    */
 /* -------------------------------------------------------------------------- */
 
-const FORECAST_CACHE = new WeakMap<WorldState, Record<SumpId, SumpForecastResult>>();
+export function useEngineeringAnalysis<K extends AnalysisKind>(kind: K, options: AnalysisOptions[K], enabled = true): AnalysisResults[K] | null {
+  const ctx = useContext(); const scenario = useActiveScenario(); const world = useDisplayWorld();
+  const running = useMineStore(s => s.running || Boolean(s.advanceTask));
+  useSyncExternalStore(subscribeAnalysis, analysisRevision, analysisRevision);
+  return enabled ? readAnalysis(kind, options, { mine: ctx.mine, assumptions: ctx.assumptions,
+    scenario: { ...scenario, overrides: world.scenarioSnapshot ?? scenario.overrides }, world }, running) : null;
+}
 
 export function useForecasts(): Record<SumpId, SumpForecastResult> {
-  const ctx = useContext();
-  const scenario = useActiveScenario();
-  const world = useWorld();
-  const derived = useDerived();
-  return useMemo(() => {
-    const cached = FORECAST_CACHE.get(world);
-    if (cached) return cached;
-    const next = forecastAllSumps({ ctx, scenario: { ...scenario, overrides: world.scenarioSnapshot ?? scenario.overrides }, world, derived });
-    FORECAST_CACHE.set(world, next);
-    return next;
-  }, [ctx, scenario, world, derived]);
+  return useEngineeringAnalysis('forecasts', {})!;
 }
 
 /**
- * Analytics are expensive; recompute at most once per simulated minute by
- * keying the cache on a quantised clock rather than the raw world reference.
+ * Ordinary read models use existing forecasts and cheap snapshot arithmetic.
+ * Full sensitivity sweeps are background jobs requested only by views using them.
  */
-export function useAnalytics(): AnalyticsBundle {
+export function useAnalytics(options: { includeSensitivity?: boolean } = {}): AnalyticsBundle {
   const ctx = useContext();
   const scenario = useActiveScenario();
   const world = useWorld();
@@ -129,9 +138,11 @@ export function useAnalytics(): AnalyticsBundle {
   const forecasts = useForecasts();
   const incidents = useIncidents();
   const assumptions = useAssumptions();
+  const sensitivity = useEngineeringAnalysis('sensitivity', {}, Boolean(options.includeSensitivity));
 
-  return useMemo(() => buildAnalytics({ ctx, scenario: { ...scenario, overrides: world.scenarioSnapshot ?? scenario.overrides }, world, derived, forecasts, incidents, assumptions }),
-    [ctx, scenario, world, derived, forecasts, incidents, assumptions]);
+  return useMemo(() => ({ ...buildAnalytics({ ctx, scenario: { ...scenario, overrides: world.scenarioSnapshot ?? scenario.overrides }, world, derived, forecasts, incidents, assumptions, includeSensitivity: false }),
+    sensitivity: sensitivity ?? [], sensitivityComputed: sensitivity !== null }),
+    [ctx, scenario, world, derived, forecasts, incidents, assumptions, sensitivity]);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -182,9 +193,12 @@ export function useSimulationDriver() {
 
     const loop = (now: number) => {
       if (last.current === 0) last.current = now;
-      const delta = Math.min(120, now - last.current);
-      last.current = now;
-      if (delta > 0) useMineStore.getState().tick(delta);
+      const elapsed = now - last.current;
+      // Numerical state does not need to be broadcast on every display frame.
+      if (elapsed >= 200) {
+        last.current = now;
+        useMineStore.getState().tick(Math.min(1000, elapsed));
+      }
       raf.current = requestAnimationFrame(loop);
     };
 

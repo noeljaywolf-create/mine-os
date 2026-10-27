@@ -27,7 +27,7 @@ import { forecastBasis } from '../simulation/analysisEvidence';
 export function Forecast() {
   const mine = useMineStore((s) => s.mine);
   const forecasts = useForecasts();
-  const analytics = useAnalytics();
+  const analytics = useAnalytics({ includeSensitivity: true });
   const assumptions = useAssumptions();
   const run = useRun();
   const selectAsset = useMineStore((s) => s.selectAsset);

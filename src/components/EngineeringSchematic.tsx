@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Maximize2, Minus, Plus, RotateCcw } from 'lucide-react';
 import { Button } from '../design-system';
 import type { MineDefinition } from '../domain/mine';
@@ -19,11 +19,24 @@ export function EngineeringSchematic({ view, mine, world, selection, related, on
   related: Set<string | null>; onSelect: (id: string) => void;
 }) {
   const [zoom, setZoom] = useState(1);
-  const [fit, setFit] = useState(false);
+  const [mode, setMode] = useState<'diagram' | 'width' | 'manual'>('diagram');
+  const [recenter, setRecenter] = useState(0);
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const viewport = useRef<HTMLDivElement>(null);
+  const svg = useRef<SVGSVGElement>(null);
+  const anchor = useRef<{ x: number; y: number } | null>(null);
   const marker = `flow-${useId().replace(/:/g, '')}`;
   const settings = world.scenarioSnapshot?.engineering ?? {};
-  useEffect(() => { viewport.current?.scrollTo({ top: 0, left: 0 }); }, [view]);
+  useEffect(() => {
+    const element = viewport.current;
+    if (!element) return;
+    const observer = new ResizeObserver(() => {
+      setViewportSize(previous => previous.width === element.clientWidth && previous.height === element.clientHeight
+        ? previous : { width: element.clientWidth, height: element.clientHeight });
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
   const color = (id: string) => {
     if (selection === id) return '#6fd3e6';
     const status = world.assets[id]?.status;
@@ -169,26 +182,58 @@ export function EngineeringSchematic({ view, mine, world, selection, related, on
     </>;
   }
 
+  const fitWidth = Math.max(0.05, (viewportSize.width - 48) / width);
+  const fitDiagram = Math.max(0.05, Math.min(fitWidth, (viewportSize.height - 48) / height, 1));
+  const scale = mode === 'diagram' ? fitDiagram : mode === 'width' ? fitWidth : zoom;
+  const stageWidth = Math.max(viewportSize.width, width * scale + 48);
+  const stageHeight = Math.max(viewportSize.height, height * scale + 48);
+  const changeZoom = (factor: number) => {
+    const element = viewport.current; const drawingBounds = svg.current?.getBoundingClientRect();
+    if (element && drawingBounds && drawingBounds.width > 0 && drawingBounds.height > 0) {
+      const bounds = element.getBoundingClientRect();
+      anchor.current = {
+        x: (bounds.left + element.clientLeft + element.clientWidth / 2 - drawingBounds.left) / drawingBounds.width,
+        y: (bounds.top + element.clientTop + element.clientHeight / 2 - drawingBounds.top) / drawingBounds.height,
+      };
+    }
+    setZoom(Math.max(0.05, Math.min(3, scale * factor))); setMode('manual');
+  };
+  const fitView = (target: 'diagram' | 'width') => { anchor.current = null; setMode(target); setRecenter(v => v + 1); };
+  useLayoutEffect(() => {
+    const element = viewport.current;
+    if (!element) return;
+    const center = anchor.current ?? { x: 0.5, y: 0.5 };
+    element.scrollTo({
+      left: (stageWidth - width * scale) / 2 + center.x * width * scale - element.clientWidth / 2,
+      top: (stageHeight - height * scale) / 2 + center.y * height * scale - element.clientHeight / 2,
+      behavior: 'instant',
+    });
+    anchor.current = null;
+  }, [scale, stageWidth, stageHeight, width, height, mode, recenter, viewportSize.width, viewportSize.height]);
+
   return <section className="mt-4 min-w-0" aria-label={INFO[view].title}>
     <div className="flex flex-wrap items-start justify-between gap-3 border-y border-ink-700/70 bg-ink-900/50 px-3 py-3">
       <div className="min-w-0 max-w-xl"><h3 className="text-sm font-semibold text-ink-100">{INFO[view].title}</h3><p className="mt-1 text-xs leading-relaxed text-ink-300">{INFO[view].description}</p></div>
       <div role="group" aria-label="Schematic zoom controls" className="flex flex-wrap items-center gap-1">
-        <Button size="xs" aria-label="Zoom out schematic" disabled={!fit && zoom <= 0.6} onClick={() => { setFit(false); setZoom(v => Math.max(0.6, v - 0.2)); }}><Minus size={14} /></Button>
-        <span className="min-w-[44px] text-center font-mono text-xs text-ink-200">{fit ? 'Fit' : `${Math.round(zoom * 100)}%`}</span>
-        <Button size="xs" aria-label="Zoom in schematic" disabled={!fit && zoom >= 1.6} onClick={() => { setFit(false); setZoom(v => Math.min(1.6, v + 0.2)); }}><Plus size={14} /></Button>
-        <Button size="xs" onClick={() => setFit(true)}><Maximize2 size={13} /> Fit width</Button>
-        <Button size="xs" onClick={() => { setFit(false); setZoom(1); viewport.current?.scrollTo({ top: 0, left: 0 }); }}><RotateCcw size={13} /> Reset</Button>
+        <Button size="xs" aria-label="Zoom out schematic" disabled={scale <= 0.050001} onClick={() => changeZoom(1 / 1.25)}><Minus size={14} /></Button>
+        <output aria-label="Schematic zoom level" className="min-w-[44px] text-center font-mono text-xs text-ink-200">{Math.round(scale * 100)}%</output>
+        <Button size="xs" aria-label="Zoom in schematic" disabled={scale >= 2.999999} onClick={() => changeZoom(1.25)}><Plus size={14} /></Button>
+        <Button size="xs" aria-pressed={mode === 'diagram'} onClick={() => fitView('diagram')}><Maximize2 size={13} /> Fit diagram</Button>
+        <Button size="xs" aria-pressed={mode === 'width'} onClick={() => fitView('width')}>Fit width</Button>
+        <Button size="xs" onClick={() => { anchor.current = null; setMode('manual'); setZoom(1); setRecenter(v => v + 1); }}><RotateCcw size={13} /> Reset</Button>
       </div>
     </div>
-    <div ref={viewport} data-testid="schematic-viewport" tabIndex={0} role="region" aria-label="Scrollable engineering drawing" className="schematic-viewport max-h-[640px] min-w-0 overflow-auto rounded-b-lg border border-ink-700 bg-ink-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-signal-cyan">
-      <svg data-testid="engineering-schematic" viewBox={`0 0 ${width} ${height}`} width={fit ? '100%' : width * zoom} height={fit ? undefined : height * zoom}
-        role="group" aria-label={`${view} schematic. Synthetic geometry; select an asset to inspect its relationships.`} className="block max-w-none" style={fit ? { width: '100%', height: 'auto' } : undefined}>
+    <div ref={viewport} data-testid="schematic-viewport" tabIndex={0} role="region" aria-label="Scrollable engineering drawing" className="schematic-viewport h-[clamp(320px,62vh,640px)] min-w-0 overflow-auto rounded-b-lg border border-ink-700 bg-ink-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-signal-cyan">
+      <div data-testid="schematic-stage" className="grid place-items-center" style={{ width: stageWidth, height: stageHeight }}>
+      <svg ref={svg} data-testid="engineering-schematic" viewBox={`0 0 ${width} ${height}`} width={width * scale} height={height * scale}
+        role="group" aria-label={`${view} schematic. Synthetic geometry; select an asset to inspect its relationships.`} className="block max-w-none shrink-0">
         <defs><marker id={marker} viewBox="0 0 10 10" refX={9} refY={5} markerWidth={6} markerHeight={6} orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#8ba6ba" /></marker></defs>
         {drawing}
       </svg>
+      </div>
     </div>
     <div className="flex flex-wrap items-center justify-between gap-2 px-1 py-3 text-xs text-ink-300">
-      <p>Scroll to explore · select equipment to link views · use Fit width for an overview</p>
+      <p>Fit diagram centers the full drawing · zoom around the viewport center · scroll to explore details</p>
       <div className="flex flex-wrap gap-3"><span className="text-signal-cyanBright">Cyan: selected / linked</span><span className="text-signal-red">Red: failed / blocked</span><span className="text-signal-amber">Amber: constrained</span></div>
     </div>
   </section>;

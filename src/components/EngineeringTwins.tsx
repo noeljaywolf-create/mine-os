@@ -35,7 +35,7 @@ export function EngineeringTwins() {
     <div role="group" aria-label="Engineering schematic views" className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
       {VIEWS.map(v => <Button key={v.id} size="sm" className="min-h-10 whitespace-normal px-3 text-center" aria-pressed={v.id === view} variant={v.id === view ? 'primary' : 'outline'} onClick={() => setView(v.id)}>{v.label}</Button>)}
     </div>
-    <EngineeringSchematic view={view} mine={mine} world={world} selection={selection} related={related} onSelect={choose} />
+    <EngineeringSchematic key={view} view={view} mine={mine} world={world} selection={selection} related={related} onSelect={choose} />
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-ink-700 bg-ink-900/70 p-3">
       <div className="min-w-0"><p className="text-xs font-medium text-ink-100">{selectedAsset?.name ?? 'Select an asset in any schematic'}</p>
         <p className="mt-1 text-xs leading-relaxed text-ink-300">{selection ? `${world.assets[selection]?.status ?? 'Unknown state'} · ${Math.max(0, related.size - 1)} directly linked assets highlighted across views` : 'Click or focus a card and press Enter. Selection is shared with the asset inspector.'}</p></div>

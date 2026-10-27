@@ -220,15 +220,50 @@ export function pumpingTotals(mine: MineDefinition, states: Record<PumpId, PumpR
     stationFlowM3h: mine.sumps.reduce((sum, s) => sum + sumpOutflowM3h(mine, states, s.id), 0) };
 }
 
-/** Discharge that a sump *could* deliver if every available standby pump were started (m3/h). */
+/** Discharge that a sump *could* deliver if every available pump were started together (m3/h).
+ *
+ * Solves the station with all available pumps (duty + healthy standby) running through the
+ * shared hydraulic main. Does NOT sum individual solo flows, because parallel pumps sharing a
+ * pipe constrain each other through system resistance. */
 export function sumpReserveCapabilityM3h(
   mine: MineDefinition,
   pumpStates: Record<PumpId, PumpRuntimeState>,
   sumpId: string,
+  overrides?: ScenarioOverride,
 ): number {
-  return mine.pumps
-    .filter((pump) => pump.sumpId === sumpId)
-    .reduce((sum, pump) => sum + (pumpStates[pump.id]?.availableFlowM3h ?? 0), 0);
+  const station = mine.pumps.filter((p) => p.sumpId === sumpId);
+  if (!station.length) return 0;
+
+  const effOverrides = overrides ?? ({} as ScenarioOverride);
+  const e = effOverrides.engineering ?? {};
+  // Pumps that could be running: duty pumps in 'running' mode + available standby pumps.
+  const available = station.filter((p) => {
+    const mode = effOverrides.pumpOverrides?.[p.id]?.mode ?? p.mode;
+    if (mode === 'maintenance' || mode === 'stopped') return false;
+    if (p.installed === false && !e.additionalStandby) return false;
+    const state = pumpStates[p.id];
+    if (!state || !state.powered || state.unavailable) return false;
+    if ((state.condition ?? p.health) <= 0) return false;
+    return true;
+  });
+  if (!available.length) return 0;
+
+  const pipe = effectivePipe(mine, effOverrides, sumpId);
+
+  // Solve the shared main with all available pumps running together.
+  const curves = available.map((p) => ({
+    ratedFlowM3h: p.ratedFlowM3h,
+    ratedHeadM: p.ratedHeadM,
+    health: overrides?.pumpOverrides?.[p.id]?.health ?? p.health,
+    efficiency: overrides?.pumpOverrides?.[p.id]?.efficiency ?? p.efficiency,
+    speedRatio: overrides?.pumpOverrides?.[p.id]?.speedRatio ?? 1,
+    curveScale: overrides?.pumpOverrides?.[p.id]?.curveScale ?? 1,
+  }));
+
+  const solved = solveStation(curves, pipe);
+  if (solved.status !== 'solved') return 0;
+
+  return stationPumpFlows(curves, pipe, solved).reduce((a, b) => a + b, 0);
 }
 
 /** Pumps that serve a sump, ordered so the first entry is the lead duty pump. */

@@ -18,7 +18,7 @@ export function effectivePipe(mine: MineDefinition, overrides: ScenarioOverride,
   const station = mine.pumps.filter(p => p.sumpId === sumpId);
   const source = mine.sumps.find(s => s.id === sumpId)!;
   const pipe = { ...defaultPipe(station[0]), ...overrides.engineering?.pipes?.[sumpId] };
-  pipe.minorK += Math.max(0, ...station.map(p => overrides.pumpOverrides[p.id]?.suctionK ?? 0));
+  pipe.minorK += Math.max(0, ...station.map(p => overrides.pumpOverrides?.[p.id]?.suctionK ?? 0));
   pipe.diameterM *= overrides.engineering?.dischargeScale ?? 1;
   if (pipe.destinationSumpId) {
     const destination = mine.sumps.find(s => s.id === pipe.destinationSumpId);

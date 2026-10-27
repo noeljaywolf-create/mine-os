@@ -70,6 +70,7 @@ export function forecastBasis(forecast: SumpForecast): EngineeringBasis {
   return { ...base, title: `${forecast.sumpId} forecast and threshold arrivals`, quantity: 'Coupled storage trajectory and sampled/interpolated threshold crossings',
     equation: 'worldnext = canonical step(world, inputs, Δt); h = inverse stage-storage(V); tcross = interpolate first adjacent samples straddling threshold',
     inputs: [
+      { name: 'Forecast snapshot time', value: forecast.generatedAtSimSec ?? 'Timestamp supplied by calling projection context', unit: 's since scenario start', source: 'Exact input snapshot used by the forecast worker' },
       { name: 'Horizon', value: end?.tSec ?? 'No forecast points', unit: 's', source: 'Last canonical projection sample' },
       { name: 'Final central volume', value: end?.volumeM3 ?? 'Unavailable', unit: 'm³', source: 'Central coupled projection' },
       { name: 'Final low/high volume', value: end ? `${end.volumeLowM3} / ${end.volumeHighM3}` : 'Unavailable', unit: 'm³', source: 'Explicit inflow sensitivity envelope, not statistical confidence' },

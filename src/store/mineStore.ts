@@ -41,6 +41,7 @@ export const SIM_SECONDS_PER_REAL_SECOND = 300;
 const FRAME_INTERVAL_SEC = 300;
 const MAX_FRAMES = 420;
 const MAX_TELEMETRY_POINTS = 360;
+let advanceSequence = 0;
 
 export interface ReplayFrame {
   simSec: number;
@@ -103,6 +104,7 @@ export interface MineState {
   role: UserRole;
   actorName: string;
   running: boolean;
+  advanceTask: { id: number; scenarioId: ScenarioId; completed: number; total: number } | null;
   speed: number;
 
   replayActive: boolean;
@@ -138,6 +140,8 @@ export interface MineState {
   tick: (deltaMs: number) => void;
   stepOnce: () => void;
   runFor: (simSeconds: number) => void;
+  runForAsync: (simSeconds: number) => Promise<ActionResult>;
+  cancelAdvance: () => void;
   setRunning: (running: boolean) => void;
   setSpeed: (speed: number) => void;
   resetActiveScenario: () => void;
@@ -404,6 +408,7 @@ export const useMineStore = create<MineState>((set, get) => {
     role: 'dewatering-engineer' as UserRole,
     actorName: PERSONAS['dewatering-engineer'],
     running: false,
+    advanceTask: null as MineState['advanceTask'],
     speed: 1,
     replayActive: false,
     replayIndex: 0,
@@ -464,7 +469,7 @@ export const useMineStore = create<MineState>((set, get) => {
     // ---------------------------------------------------------- simulation
     tick: (deltaMs) => {
       const state = get();
-      if (!state.running || state.replayActive) return;
+      if (!state.running || state.replayActive || state.advanceTask) return;
       const run = state.getRun();
       const simSec = (deltaMs / 1000) * SIM_SECONDS_PER_REAL_SECOND * state.speed;
       const total = run.accumulatorSec + simSec;
@@ -493,7 +498,7 @@ export const useMineStore = create<MineState>((set, get) => {
 
     stepOnce: () => {
       const state = get();
-      if (state.replayActive) return;
+      if (state.replayActive || state.advanceTask) return;
       set(advance(state, 1));
       set({ replayActive: false });
     },
@@ -506,7 +511,37 @@ export const useMineStore = create<MineState>((set, get) => {
       set(advance(state, steps));
     },
 
-    setRunning: (running) => set({ running }),
+    runForAsync: async (simSeconds) => {
+      const state = get();
+      if (state.replayActive || state.advanceTask) return { ok: false, message: 'Leave replay or finish/cancel the current time advance first.' };
+      if (!Number.isFinite(simSeconds) || simSeconds <= 0 || simSeconds > 48 * 3600) return { ok: false, message: 'Time advance must be within (0, 48 hours].' };
+      const id = ++advanceSequence; const scenarioId = state.activeScenarioId;
+      const total = Math.max(1, Math.round(simSeconds / state.getRun().world.clock.stepSec));
+      let expectedWorld = state.getRun().world;
+      set({ running: false, advanceTask: { id, scenarioId, completed: 0, total } });
+      try {
+        // Fixed batches preserve deterministic event/incident checkpoints while
+        // yielding between batches so navigation and cancel clicks are processed.
+        for (let completed = 0; completed < total;) {
+          await new Promise<void>(resolve => setTimeout(resolve, 16));
+          const current = get();
+          if (current.advanceTask?.id !== id || current.activeScenarioId !== scenarioId || current.replayActive || current.getRun().world !== expectedWorld)
+            return { ok: false, message: 'Time advance stopped; completed steps are retained.' };
+          const count = Math.min(4, total - completed);
+          const updated = advance(current, count); completed += count;
+          set({ ...updated, advanceTask: { id, scenarioId, completed, total } });
+          expectedWorld = get().getRun().world;
+        }
+        return { ok: true, message: 'Requested simulation interval completed.' };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        set(s => ({ toasts: toast(s, 'error', 'Time advance stopped', message) }));
+        return { ok: false, message };
+      } finally { if (get().advanceTask?.id === id) set({ advanceTask: null }); }
+    },
+    cancelAdvance: () => set({ advanceTask: null, running: false }),
+
+    setRunning: (running) => { if (!get().advanceTask) set({ running }); },
 
     setSpeed: (speed) => set({ speed }),
 
@@ -609,6 +644,40 @@ export const useMineStore = create<MineState>((set, get) => {
       const state = get();
       if (!state.can('scenario.edit-assumptions') || state.getScenario().isBaseline || state.replayActive)
         return { ok: false, message: 'Branch an editable scenario and leave replay before applying engineering changes.' };
+      // Permission checks for specific override types: Mine Manager can edit assumptions but
+      // cannot fail feeders or start pumps through this path.
+      for (const [fid, st] of Object.entries(patch.feederOverrides ?? {})) {
+        if (st.status === 'failed' || st.status === 'degraded') {
+          if (!state.can('asset.fail')) {
+            const message = `${roleName(state.role)} cannot fail feeder ${fid}.`;
+            set({ toasts: toast(state, 'error', 'Action refused', message) });
+            return { ok: false, message };
+          }
+        } else if (st.status === 'energised') {
+          if (!state.can('asset.restore')) {
+            const message = `${roleName(state.role)} cannot restore feeder ${fid}.`;
+            set({ toasts: toast(state, 'error', 'Action refused', message) });
+            return { ok: false, message };
+          }
+        }
+      }
+      for (const [pid, po] of Object.entries(patch.pumpOverrides ?? {})) {
+        if (po.mode === 'running' && !state.can('pump.start')) {
+          const message = `${roleName(state.role)} cannot start pump ${pid}.`;
+          set({ toasts: toast(state, 'error', 'Action refused', message) });
+          return { ok: false, message };
+        }
+        if (po.mode === 'standby' && !state.can('pump.toggle-standby')) {
+          const message = `${roleName(state.role)} cannot set standby on pump ${pid}.`;
+          set({ toasts: toast(state, 'error', 'Action refused', message) });
+          return { ok: false, message };
+        }
+        if (po.mode === 'stopped' && !state.can('pump.stop')) {
+          const message = `${roleName(state.role)} cannot stop pump ${pid}.`;
+          set({ toasts: toast(state, 'error', 'Action refused', message) });
+          return { ok: false, message };
+        }
+      }
       const scenario = state.getScenario();
       const overrides = cloneOverrides(scenario.overrides);
       const engineering = patch.engineering;

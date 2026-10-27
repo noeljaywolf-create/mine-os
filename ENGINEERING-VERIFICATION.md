@@ -105,7 +105,7 @@ The incident event identifier is deterministic; uncalibrated hypothesis probabil
 
 ### Browser regression and interaction checks
 
-**Sixteen Chromium tests passing against the standalone production build**, covering:
+**Seventeen registered Chromium tests.** The full 16-test engineering regression passed before the latest zoom adjustment; all three focused schematic tests passed after it. Coverage includes:
 
 1. Pipe diameter changes calculated flow; the basis dialog opens; the result persists when navigating to DeepWater.
 2. Feeder failure causes storage growth, an incident, and usable historical replay.
@@ -114,6 +114,7 @@ The incident event identifier is deterministic; uncalibrated hypothesis probabil
 5. Primary ore-route failure removes actual route flow, enabling the alternate restores only its shared 250 t/h capacity, and the material-flow basis is inspectable.
 6. All four schematics have non-overlapping equipment cards and fitting labels; keyboard selection, cross-view highlighting, zoom, fit/reset and dependency graph connections work.
 7. Diagram overflow remains inside its scroll viewport at 375, 768, 1024 and 1440 px screen widths.
+   The latest schematic check also verifies full-diagram centering, zoom-out below the previous 60% limit, preservation of the panned viewport center during zoom, and refitting after resize. Schematics start fitted and centered, support 5–300% manual zoom, and expose separate Fit diagram / Fit width controls.
 8. All five challenge scenarios are solved through requested observations, cited evidence, calculations, alternative testing and verification proposals.
 9. Advanced mode requires a concurrent impairment; difficulty switching invalidates the attempt.
 10. Missing observations remain null and time advances require explicit evidence refresh.

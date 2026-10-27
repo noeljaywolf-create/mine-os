@@ -17,7 +17,7 @@ export function MaterialHandlingPanel() {
     <MetricGrid cols={3}><MetricCell><Metric label="Ore buffer inventory" value={(world.oreBufferTonnes ?? 0).toFixed(1)} unit="t" hint={`capacity ${materialCapacity(model, world.scenarioSnapshot?.engineering ?? e).toFixed(0)} t`} /></MetricCell>
       <MetricCell><Metric label="Routed underground throughput" value={derived.materialFlow.totalTph.toFixed(1)} unit="t/h" /></MetricCell>
       <MetricCell><Metric label="Material ledger residual" value={(world.materialLedger?.residualTonnes ?? 0).toExponential(2)} unit="t" /></MetricCell></MetricGrid>
-    <fieldset disabled={scenario.isBaseline || store.replayActive}>
+    <fieldset disabled={scenario.isBaseline || store.replayActive || Boolean(store.advanceTask)}>
       <TableShell><thead><tr><Th>Ore movement route</Th><Th>Calculated flow</Th><Th>Availability / intervention</Th><Th>Transport capacity</Th></tr></thead><tbody>{model.routes.map(r => {
         const available = e.materialRoutes?.[r.id]?.available ?? r.defaultAvailable;
         return <tr key={r.id}><Td>{r.name} {r.alternative && <Badge tone="blue">Shared alternate</Badge>}</Td><Td><output data-testid={`route-flow-${r.id}`}>{(derived.materialFlow.routeFlowsTph[r.id] ?? 0).toFixed(1)} t/h</output></Td>
@@ -27,7 +27,7 @@ export function MaterialHandlingPanel() {
       <div className="mt-3 grid gap-3 md:grid-cols-3"><Button size="xs" onClick={() => apply({ hoistAvailable: e.hoistAvailable === false })}>Common hoist: {e.hoistAvailable === false ? 'unavailable' : 'available'}</Button>
         <Range label="Common hoist capacity (t/h)" min={0} max={1600} step={50} value={e.hoistCapacityTph ?? model.hoistCapacityTph} onChange={v => apply({ hoistCapacityTph: v })} />
         <Range label="Ore-buffer capacity assumption (t)" min={560} max={2240} step={140} value={e.oreBufferCapacityTonnes ?? model.bufferCapacityTonnes} onChange={v => apply({ oreBufferCapacityTonnes: v })} /></div>
-      <Button size="xs" className="mt-3" onClick={() => store.runFor(3600)}>Advance material simulation 1 h</Button>
+      <Button size="xs" className="mt-3" onClick={() => { void store.runForAsync(3600); }}>Advance material simulation 1 h</Button>
     </fieldset>
     <p role="status" className="my-2 text-xs text-signal-cyanBright">{message}</p>
     <Notice tone="neutral" title="Capacity-network assumptions">Deterministic maximum-flow allocation respects route, shared-hoist and finite receiving capacities. Equal-value ore is allocated in stable graph order; no claim of profit-optimal scheduling. Alternative access is not available through a flooded working zone. Route geometry, travel times, haulage power, hoist mechanics and stockpile construction are not engineering designs.</Notice>

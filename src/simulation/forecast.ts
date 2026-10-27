@@ -105,7 +105,16 @@ export function forecastSump(args: {
 
   const horizonHours = options.horizonHours ?? ctx.assumptions.forecastHorizonHours;
   const stepSec = Math.min(300, options.stepSec ?? 300);
-  const degraded = Object.values(derived.sensorStates).some(s => s.freshness !== 'live');
+  // Only sensors relevant to this sump should widen the uncertainty band:
+  // level/pressure sensors on this sump, plus sensors on upstream sumps that transfer into it.
+  const relevantSensors = ctx.mine.sensors.filter((sensor) => {
+    if (sensor.assetId === sumpId && (sensor.kind === 'level' || sensor.kind === 'pressure')) return true;
+    const upstreamSump = ctx.mine.sumps.find(
+      (s) => s.id === sensor.assetId && efScenario.overrides.engineering?.pipes?.[s.id]?.destinationSumpId === sumpId,
+    );
+    return !!upstreamSump;
+  });
+  const degraded = relevantSensors.some((s) => derived.sensorStates[s.id]?.freshness !== 'live');
   const uncertaintyPct = Math.min(90, (options.uncertaintyPct ?? ctx.assumptions.inflowUncertaintyPct) * (degraded ? 2 : 1));
   const key = JSON.stringify([efScenario.overrides, ctx.assumptions, horizonHours, stepSec, uncertaintyPct, options.inflowMultiplier]);
   let cache = projectionCache.get(world);

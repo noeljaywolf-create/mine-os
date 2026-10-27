@@ -7,6 +7,10 @@ import { achievedRecovery } from './recovery';
 
 export interface Strategy { id: string; label: string; patch: Partial<ScenarioOverride>; delayHours: number;
   resourceCostUSD: number; prerequisites: string[]; risks: string[]; }
+export function customRepairStrategy(world: WorldState, delay: number): Strategy {
+  return { id: 'custom', label: 'Engineer-defined repair delay', patch: { engineering: { restoreAtSec: world.clock.elapsedSec + delay * 3600 } }, delayHours: delay,
+    resourceCostUSD: 2000, prerequisites: ['Engineer-defined delay; repair crew and reviewed switching.'], risks: ['Repair feasibility and timing are assumptions.'] };
+}
 export function recoveryStrategies(world: WorldState): Strategy[] {
   const base = { delayHours: 0, resourceCostUSD: 0, prerequisites: ['Engineering review and site authorisation required.'],
     risks: ['Simplified model; unresolved inflow, geometry and equipment uncertainty.'] };
@@ -119,4 +123,10 @@ export const INVESTMENTS: Array<{ label: string; capitalUSD: number; settings: E
 
 export function capitalAssumption(baseUSD: number, settings?: EngineeringOverrides): number {
   return baseUSD * (settings?.capitalCostMultiplier ?? 1);
+}
+export function compareInvestments(ctx: EngineContext, scenario: Scenario, world: WorldState) {
+  const base = recoveryStrategies(world)[1];
+  return [{ label: 'Current infrastructure', capitalUSD: 0, limitation: 'Reference for the same initial storage and scenario.',
+    result: evaluateStrategy(ctx, scenario, world, base) }, ...INVESTMENTS.map(i => ({ ...i, capitalUSD: capitalAssumption(i.capitalUSD, scenario.overrides.engineering),
+    result: evaluateStrategy(ctx, scenario, world, { ...base, id: i.label, label: i.label, patch: { engineering: i.settings, pumpOverrides: i.pumpOverrides } }) }))];
 }

@@ -458,6 +458,7 @@ export type ForecastPoint = {
 };
 
 export interface SumpForecast {
+  generatedAtSimSec?: number;
   sumpId: SumpId;
   points: ForecastPoint[];
   /** First time the central estimate crosses a threshold (seconds). */

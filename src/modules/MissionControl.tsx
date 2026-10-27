@@ -30,7 +30,7 @@ export function MissionControl() {
   const incidents = useIncidents();
   const activity = useActivity();
   const run = useRun();
-  const runFor = useMineStore((s) => s.runFor);
+  const runFor = useMineStore((s) => s.runForAsync);
   const selectAsset = useMineStore((s) => s.selectAsset);
   const running = useMineStore((s) => s.running);
 

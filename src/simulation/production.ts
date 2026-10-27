@@ -218,7 +218,18 @@ export function buildExposureSummary(args: {
     };
   });
 
-  const downtimeHours = perZone.reduce((sum, z) => sum + z.lostHours, 0);
+  // Idle cost is site-wide: weight lost hours by each zone's design throughput so
+  // a one-hour full-site outage incurs one hourly site charge, while partial
+  // losses are weighted by zone design throughput. Deferred potential is kept
+  // distinct from permanent loss.
+  const totalDesignRate = mine.zones.reduce((sum, z) => sum + z.designRateTph, 0);
+  const weightedDowntimeHours = perZone.reduce((sum, z) => {
+    const zone = mine.zones.find((mz) => mz.id === z.zoneId);
+    const weight = zone ? zone.designRateTph / totalDesignRate : 1 / Math.max(1, mine.zones.length);
+    return sum + z.lostHours * weight;
+  }, 0);
+
+  const downtimeHours = weightedDowntimeHours;
   const lostTonnes = perZone.reduce((sum, z) => sum + z.lostTonnes, 0);
   const lostProductionValueUSD = perZone.reduce((sum, z) => sum + z.lostValueUSD, 0);
   const idleOperatingCostUSD = downtimeHours * assumptions.operatingCostPerHourUSD;

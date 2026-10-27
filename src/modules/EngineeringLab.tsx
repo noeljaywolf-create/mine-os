@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Badge, Button, Field, Metric, MetricCell, MetricGrid, Notice, Panel, Range, Select, TableShell, Td, Th } from '../design-system';
 import { MODULE_BY_ID } from '../app/modules';
@@ -8,9 +8,10 @@ import { EngineeringTwins } from '../components/EngineeringTwins';
 import { EngineeringBasis } from '../components/EngineeringBasis';
 import { MaterialHandlingPanel } from '../components/MaterialHandlingPanel';
 import { ForecastChart } from '../components/charts';
-import { useActiveScenario, useContext, useDisplayWorld } from '../store/hooks';
+import { useActiveScenario, useContext, useDisplayWorld, useEngineeringAnalysis } from '../store/hooks';
 import { useMineStore } from '../store/mineStore';
-import { capitalAssumption, compareStrategies, evaluateStrategy, INVESTMENTS, recoveryStrategies, searchDutyStrategies, strategyInflowSensitivity, strategyObjectives, STRESS_CASES, type Strategy } from '../simulation/engineeringStudies';
+import { strategyObjectives, STRESS_CASES } from '../simulation/engineeringStudies';
+import { AnalysisLoading } from '../components/AnalysisFeedback';
 import { CHALLENGES, CHALLENGE_DIFFICULTIES, challengeDefinition, challengeScore, EMPTY_REASONING, inspectionCost, investigate, MEASUREMENTS, type Measurement, type DiagnosticObservation, type ChallengeReasoning } from '../simulation/investigation';
 import { ChallengeReasoningForm } from '../components/ChallengeReasoningForm';
 import { challengeBasis, diagnosticBasis, investmentBasis, recoveryBasis } from '../simulation/analysisEvidence';
@@ -46,8 +47,8 @@ export function EngineeringLab() {
     {tab === 'hydraulics' && <><HydraulicAnalyser /><EngineeringTwins /></>}
     {tab === 'resilience' && <ResilienceLab />}
     {tab === 'investigation' && <InvestigationWorkbench />}
-    {tab === 'comparison' && <ComparisonCentre />}
-    {tab === 'investment' && <InvestmentLab />}
+    {tab === 'comparison' && <Suspense fallback={<AnalysisLoading label="Comparing recovery strategies" />}><ComparisonCentre /></Suspense>}
+    {tab === 'investment' && <Suspense fallback={<AnalysisLoading label="Evaluating infrastructure investments" />}><InvestmentLab /></Suspense>}
     {tab === 'challenge' && <ChallengeLab />}
     {tab === 'validation' && <Panel className="p-3"><h2 className="label-micro">Model-validation register</h2>
       <Notice tone="amber" title="Software verification is not field validation">The fixtures exercise the implementation, not a real mine. No field calibration, engineering certification or commissioned system is claimed. Execute npm test for current local test results; this register is not a live CI feed.</Notice>
@@ -65,7 +66,7 @@ function ResilienceLab() {
   const world = useDisplayWorld();
   const [sumpId, setSump] = useState('smp-201');
   const [message, setMessage] = useState('');
-  const editable = !scenario.isBaseline && !store.replayActive;
+  const editable = !scenario.isBaseline && !store.replayActive && !store.advanceTask;
   const e = scenario.overrides.engineering ?? {};
   const apply = (p: Partial<ScenarioOverride>) => setMessage(store.applyEngineeringOverrides(p).message);
   const initiate = () => {
@@ -74,7 +75,7 @@ function ResilienceLab() {
   };
   return <>
     <Panel className="p-3"><h2 className="label-micro">Electrical disruption creates a dewatering crisis</h2>
-      <div className="my-3 flex flex-wrap gap-2"><Button onClick={initiate}>Initiate Simulated Feeder Failure</Button><Button disabled={!editable} onClick={() => store.runFor(3600)}>Advance simulation 1 h</Button><Button disabled={!editable} onClick={() => apply({ feederOverrides: { 'fdr-02': { status: 'energised' } }, engineering: { restoreAtSec: null } })}>Restore F-02 now</Button></div>
+      <div className="my-3 flex flex-wrap gap-2"><Button disabled={Boolean(store.advanceTask)} onClick={initiate}>Initiate Simulated Feeder Failure</Button><Button disabled={!editable} onClick={() => { void store.runForAsync(3600); }}>Advance simulation 1 h</Button><Button disabled={!editable} onClick={() => apply({ feederOverrides: { 'fdr-02': { status: 'energised' } }, engineering: { restoreAtSec: null } })}>Restore F-02 now</Button></div>
       <fieldset disabled={!editable} className="grid gap-4 md:grid-cols-3">
         <div className="space-y-3"><Field label="Inflow source / storage"><Select value={sumpId} onChange={ev => setSump(ev.target.value)}>{store.mine.sumps.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</Select></Field>
           <Range label="Groundwater inflow multiplier" min={0.2} max={4} step={0.1} value={scenario.overrides.sumpOverrides[sumpId]?.inflowMultiplier ?? 1} onChange={v => apply({ sumpOverrides: { [sumpId]: { inflowMultiplier: v } } })} />
@@ -101,23 +102,22 @@ function ResilienceLab() {
       <MetricGrid cols={3}><MetricCell><Metric label="Site mass residual" value={(world.waterLedger?.residualM3 ?? 0).toExponential(2)} unit="m³" /></MetricCell><MetricCell><Metric label="Last-step overflow" value={(world.waterLedger?.overflowM3 ?? 0).toFixed(2)} unit="m³" /></MetricCell><MetricCell><Metric label="Plant buffer" value={(world.oreBufferTonnes ?? 0).toFixed(0)} unit="t" /></MetricCell></MetricGrid>
       <div className="my-3 flex flex-wrap gap-2"><EngineeringBasis assetId="site:water" /><EngineeringBasis assetId="site:power" /><EngineeringBasis assetId="site:production" /></div>
     </Panel>
-    <EngineeringTwins /><MaterialHandlingPanel /><ComparisonCentre />
+    <EngineeringTwins /><MaterialHandlingPanel /><Suspense fallback={<AnalysisLoading label="Comparing recovery strategies" />}><ComparisonCentre /></Suspense>
   </>;
 }
 
 function ComparisonCentre() {
   const ctx = useContext(); const scenario = useActiveScenario(); const world = useDisplayWorld();
   const apply = useMineStore(s => s.applyEngineeringOverrides);
+  const readOnly = useMineStore(s => s.replayActive || Boolean(s.advanceTask));
   const [delay, setDelay] = useState(2); const [message, setMessage] = useState('');
   const [search, setSearch] = useState(false); const [sensitivity, setSensitivity] = useState(false);
   const [focus, setFocus] = useState('none');
-  const custom: Strategy = { id: 'custom', label: 'Engineer-defined repair delay', patch: { engineering: { restoreAtSec: world.clock.elapsedSec + delay * 3600 } }, delayHours: delay,
-    resourceCostUSD: 2000, prerequisites: ['Engineer-defined delay; repair crew and reviewed switching.'], risks: ['Repair feasibility and timing are assumptions.'] };
-  const results = useMemo(() => compareStrategies(ctx, scenario, world, custom), [ctx, scenario, world, delay]);
-  const duty = useMemo(() => search ? searchDutyStrategies(ctx, scenario, world) : [], [ctx, scenario, world, search]);
+  const results = useEngineeringAnalysis('comparison', { delay })!;
+  const duty = useEngineeringAnalysis('duty', {}, search) ?? [];
   const selected = results.find(r => r.strategy.id === focus) ?? results[0];
   const { minCost, minExposure, fastest } = strategyObjectives(results);
-  const sensitivityResults = useMemo(() => sensitivity ? strategyInflowSensitivity(ctx, scenario, world, selected.strategy) : [], [ctx, scenario, world, selected.strategy, sensitivity]);
+  const sensitivityResults = useEngineeringAnalysis('strategy-sensitivity', { strategy: selected.strategy }, sensitivity) ?? [];
   const report = () => {
     const blob = new Blob([JSON.stringify({ model: MODEL_VERSION, atSimSec: world.clock.elapsedSec, assumptions: ctx.assumptions,
       scenario, currentWorld: world, results: results.map(({ frames: _frames, ...r }) => r), validation: VALIDATION_REGISTER,
@@ -134,7 +134,7 @@ function ComparisonCentre() {
       <Td>{r.recovery.achievedAtHours === null ? 'Not confirmed within 6 h' : `${r.recovery.achievedAtHours.toFixed(2)} h onset · confirmed ${r.recovery.confirmedAtHours!.toFixed(2)} h`}<br />Resolution {r.recovery.resolutionSec} s</Td>
       <Td>${r.costUSD.toFixed(0)} · {r.energyKwh.toFixed(1)} kWh</Td><Td>{r.deferredTonnes.toFixed(1)} t<br />${r.revenueExposureUSD.toFixed(0)} value exposure</Td><Td>{r.exposureHours.toFixed(2)} h</Td>
       <Td><Badge tone={r.feasible ? 'green' : 'amber'}>{r.feasible ? 'Model constraints pass' : 'Rejected / prerequisite unmet'}</Badge>{r.violations.map(v => <p key={v} className="mt-1 text-[10px]">{v}</p>)}</Td>
-      <Td><Button size="xs" onClick={() => setFocus(r.strategy.id)}>Inspect</Button><EngineeringBasis assetId="analysis:recovery" providedBasis={recoveryBasis(r, ctx.assumptions)} /><Button size="xs" disabled={scenario.isBaseline || !r.feasible || r.strategy.id === 'none'} onClick={() => setMessage(apply(r.strategy.patch).message)}>Apply inputs</Button></Td>
+      <Td><Button size="xs" onClick={() => setFocus(r.strategy.id)}>Inspect</Button><EngineeringBasis assetId="analysis:recovery" providedBasis={recoveryBasis(r, ctx.assumptions)} /><Button size="xs" disabled={scenario.isBaseline || readOnly || !r.feasible || r.strategy.id === 'none' || r.frames[0].clock.elapsedSec !== world.clock.elapsedSec} onClick={() => setMessage(apply(r.strategy.patch).message)}>Apply inputs</Button></Td>
     </tr>)}</tbody></TableShell>
     <p role="status" className="text-xs text-signal-cyanBright">{message}</p>
     <div className="my-3 grid gap-3 md:grid-cols-2"><div><h3 className="label-micro">{selected.strategy.label} · prerequisites / remaining risks</h3>
@@ -171,7 +171,7 @@ function InvestigationWorkbench({ requested, onRequest, captured, remainingBudge
     <div className="my-2 grid gap-3 md:grid-cols-2"><Field label="Incident evidence context"><Select value={store.selection.incidentId ?? ''} onChange={e => store.selectAsset({ incidentId: e.target.value || null })}><option value="">No incident selected — numerical investigation</option>{store.getRun().incidents.map(i => <option key={i.id} value={i.id}>{i.reference}: {i.title}</option>)}</Select></Field>
       <Field label="Investigate pump"><Select disabled={Boolean(onRequest)} value={pumpId} onChange={e => store.selectAsset({ assetId: e.target.value })}>{ctx.mine.pumps.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field></div>
     {selectedIncident && <p className="my-2 text-xs text-ink-300">{selectedIncident.summary} · {selectedIncident.evidence.length} retained evidence references.</p>}
-    <div className="my-3 flex flex-wrap gap-2">{MEASUREMENTS.map(m => <Button key={m} size="xs" disabled={requests.includes(m) || (remainingBudget !== undefined && inspectionCost(m) > remainingBudget) || Boolean(onRequest && store.replayActive)} onClick={() => request(m)}>Request {m}</Button>)}</div>
+    <div className="my-3 flex flex-wrap gap-2">{MEASUREMENTS.map(m => <Button key={m} size="xs" disabled={requests.includes(m) || (remainingBudget !== undefined && inspectionCost(m) > remainingBudget) || Boolean(onRequest && (store.replayActive || store.advanceTask))} onClick={() => request(m)}>Request {m}</Button>)}</div>
     <div className="my-3 flex flex-wrap gap-2"><Button size="xs" disabled={!requests.length || Boolean(onRequest && store.replayActive)} onClick={() => requests.forEach(request)}>Refresh requested evidence at displayed time</Button><EngineeringBasis assetId="analysis:diagnostics" providedBasis={diagnosticBasis(investigation)} /></div>
     <TableShell><thead><tr><Th>Requested evidence / timestamp</Th><Th>Observed synthetic</Th><Th>Expected / comparison</Th><Th>Residual</Th><Th>Provenance / usability</Th></tr></thead><tbody>{investigation.measurements.map(m => <tr key={m.id} data-testid={`observation-${m.id}`}><Td>{m.id} · T+{m.atSimSec}s</Td><Td>{m.observed?.toFixed(3) ?? 'Missing — no substitution'} {m.unit}</Td><Td>{m.expected?.toFixed(3) ?? 'Unsupported'} {m.unit}</Td><Td>{m.residual?.toFixed(3) ?? 'Indeterminate'}</Td><Td>{m.source}<br /><Badge tone={m.usable ? 'cyan' : 'amber'}>{m.usable ? m.quality : 'Missing, unsupported or stale for this snapshot'}</Badge></Td></tr>)}</tbody></TableShell>
     <TableShell><thead><tr><Th>Competing hypothesis</Th><Th>Evidence disposition (not probability)</Th><Th>Supporting / contradicting evidence</Th><Th>Recommended inspection</Th></tr></thead><tbody>{investigation.hypotheses.map(h => <tr key={h.id} data-testid={`hypothesis-${h.id}`}><Td>{h.title}</Td><Td>{h.conclusion}</Td><Td>{h.evidence.map((e, i) => <p key={i} className="mb-2 text-xs">{e.disposition} · {e.measurement}: {e.detail}</p>)}</Td><Td>{h.inspection}</Td></tr>)}</tbody></TableShell>
@@ -190,13 +190,8 @@ function InvestigationWorkbench({ requested, onRequest, captured, remainingBudge
 }
 
 function InvestmentLab() {
-  const ctx = useContext(); const scenario = useActiveScenario(); const world = useDisplayWorld(); const store = useMineStore();
-  const results = useMemo(() => {
-    const base = recoveryStrategies(world)[1];
-    return [{ label: 'Current infrastructure', capitalUSD: 0, limitation: 'Reference for the same initial storage and scenario.',
-      result: evaluateStrategy(ctx, scenario, world, base) }, ...INVESTMENTS.map(i => ({ ...i, capitalUSD: capitalAssumption(i.capitalUSD, scenario.overrides.engineering),
-        result: evaluateStrategy(ctx, scenario, world, { ...base, id: i.label, label: i.label, patch: { engineering: i.settings, pumpOverrides: i.pumpOverrides } }) }))];
-  }, [ctx, scenario, world]);
+  const ctx = useContext(); const scenario = useActiveScenario(); const store = useMineStore();
+  const results = useEngineeringAnalysis('investments', {})!;
   return <Panel className="p-3"><h2 className="label-micro">Resilience investment planning — same scenario re-run, 6 h</h2>
     {scenario.isBaseline && <Button size="xs" onClick={() => store.createScenarioBranch({ name: 'Infrastructure investment study', description: 'Synthetic capital and infrastructure assumptions.', hypothesis: 'Compare investment alternatives under the same scenario.' })}>Create investment study branch</Button>}
     <div className="my-3 max-w-sm"><Range disabled={scenario.isBaseline} label="Capital estimate sensitivity multiplier" min={0.5} max={2} step={0.1} value={scenario.overrides.engineering?.capitalCostMultiplier ?? 1} onChange={v => store.applyEngineeringOverrides({ engineering: { capitalCostMultiplier: v } })} /></div>
@@ -219,25 +214,25 @@ function ChallengeLab() {
   const score = challengeScore(challenge, difficulty, requested, answer, reasoning, report);
   const active = startedScenario === store.activeScenarioId;
   const unchanged = configuration === JSON.stringify(scenario.overrides);
-  const start = () => {
+  const start = async () => {
     store.switchScenario('scn-baseline');
     const id = store.createScenarioBranch({ name: `Engineering challenge · ${challenge}`, description: 'Diagnose through requested evidence. Fault parameters remain in the ordinary canonical scenario.', hypothesis: 'Investigate the observed consequences before choosing a cause.', overrides: c.patch });
     store.resetActiveScenario(); // Reset only the new challenge child; preserve the reference run.
     store.selectAsset({ assetId: 'pmp-201' }); setStarted(id); setRequested([]); setCaptured([]); setReasoning(EMPTY_REASONING); setAnswer(''); setGraded(false);
     setConfiguration(JSON.stringify(store.getScenario().overrides));
-    if (challenge === 'delayed') store.runFor(5 * 3600); else store.runFor(600);
+    await store.runForAsync(challenge === 'delayed' ? 5 * 3600 : 600);
   };
   return <><Panel className="p-3"><h2 className="label-micro">Senior engineer challenge laboratory</h2>
     <div className="my-3 grid gap-3 md:grid-cols-2"><Field label="Challenge"><Select value={challenge} onChange={e => { setChallenge(e.target.value); setStarted(''); setGraded(false); }}>{CHALLENGES.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}</Select></Field>
       <Field label="Difficulty / evidence requirements"><Select value={difficulty} onChange={e => { setDifficulty(e.target.value as typeof difficulty); setStarted(''); setGraded(false); }}><option value="beginner">Beginner · guided reasoning</option><option value="engineer">Engineer · independent diagnosis</option><option value="advanced">Advanced engineer · concurrent impairments</option></Select></Field></div>
     <p className="my-3 text-xs leading-relaxed text-ink-300">{CHALLENGE_DIFFICULTIES[difficulty].description} Budget: {c.budget} training effort points. Independent level, mechanical condition and efficiency inspections cost 2; other requests cost 1.</p>
-    <Button onClick={start}>Start deterministic challenge</Button>
+    <Button disabled={Boolean(store.advanceTask)} onClick={() => { void start(); }}>Start deterministic challenge</Button>
     {active && !unchanged && <Notice tone="amber" title="Challenge configuration changed">Restart the challenge to assess the defined scenario. Editing equipment/inputs invalidates this attempt.</Notice>}
     {active && unchanged && <><p className="my-2 text-xs text-ink-300">Fault parameters are not named in the brief. Request independent evidence, inspect the twins and replay, then provide a conclusion. No scoring for repeated clicks. Inspection effort {score.spent}/{score.budget}.</p>
       {difficulty === 'beginner' && <Notice tone="neutral" title="Guided investigation">{c.hint} Test an alternative with an independent inspection; a clean suction inspection can contradict the suction-restriction hypothesis.</Notice>}
       <Field label="Evidence-based conclusion"><Select value={answer} onChange={e => { setAnswer(e.target.value); setGraded(false); }}><option value="">Select after investigation</option><option value="inflow">Inflow exceeds delivered pumping</option><option value="power">Insufficient usable electrical supply</option><option value="instrumentation">Instrumentation disagreement / scaling</option><option value="resistance">System resistance / motor duty constraint</option><option value="wear">Pump underperformance / wear</option><option value="delayed">Delayed storage → access consequence</option></Select></Field>
       <ChallengeReasoningForm value={reasoning} onChange={v => { setReasoning(v); setGraded(false); }} report={report} definition={c} difficulty={difficulty} />
-      <Button size="xs" disabled={store.replayActive} onClick={() => setGraded(true)}>Review investigative process</Button>{graded && <><p role="status" className="my-2 text-xs text-signal-cyanBright">{score.score}/100 · {score.resolved ? 'Evidence-supported resolution' : 'Further investigation needed'} · {score.explanation} {score.missing.length > 0 && `Missing: ${score.missing.join(', ')}`}</p>
+      <Button size="xs" disabled={store.replayActive || Boolean(store.advanceTask)} onClick={() => setGraded(true)}>Review investigative process</Button>{graded && <><p role="status" className="my-2 text-xs text-signal-cyanBright">{score.score}/100 · {score.resolved ? 'Evidence-supported resolution' : 'Further investigation needed'} · {score.explanation} {score.missing.length > 0 && `Missing: ${score.missing.join(', ')}`}</p>
         <TableShell><thead><tr><Th>Reasoning rubric</Th><Th>Earned / available</Th></tr></thead><tbody>{score.rubric.map(r => <tr key={r.criterion}><Td>{r.criterion}</Td><Td>{r.points} / {r.maximum}</Td></tr>)}</tbody></TableShell><EngineeringBasis assetId="analysis:challenge" providedBasis={challengeBasis(score)} /></>}
     </>}
   </Panel>{active && unchanged && <><InvestigationWorkbench requested={requested} captured={captured} remainingBudget={Math.max(0, c.budget - score.spent)} onRequest={(m, observation) => { setRequested(s => s.includes(m) ? s : [...s, m]); setCaptured(s => [...s, observation]); setGraded(false); }} /><EngineeringTwins /></>}</>;

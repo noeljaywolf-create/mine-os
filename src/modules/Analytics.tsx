@@ -60,7 +60,7 @@ export function Analytics() {
       >
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-2xs text-ink-500">
-            All figures derive from the canonical engine at the current step. Nothing here is separately entered.
+            Snapshot arithmetic uses the current step. Forecast-based values use the background-analysis timestamp shown above.
           </span>
           <span className="ml-auto font-mono text-[9px] uppercase tracking-[0.12em] text-ink-500">
             {analytics.elapsedHours.toFixed(2)} h simulated
