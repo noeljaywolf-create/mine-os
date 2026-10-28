@@ -49,6 +49,8 @@ test('schematic cards stay separated, labels fit, and selection links operating 
 test('fit centers the entire drawing and zooming out preserves its viewport center', async ({ page }) => {
   await page.goto('/app/digital-twin');
   await page.getByRole('button', { name: 'Ore movement twin', exact: true }).click();
+  await expect(page.getByLabel('Schematic zoom level', { exact: true })).toHaveText('100%');
+  await page.getByRole('button', { name: 'Fit diagram', exact: true }).click();
   const viewport = page.getByTestId('schematic-viewport');
   const measure = () => viewport.evaluate(el => {
     const svg = el.querySelector('svg')!; const drawing = svg.getBoundingClientRect(); const bounds = el.getBoundingClientRect();

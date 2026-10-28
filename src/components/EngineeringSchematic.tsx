@@ -19,7 +19,7 @@ export function EngineeringSchematic({ view, mine, world, selection, related, on
   related: Set<string | null>; onSelect: (id: string) => void;
 }) {
   const [zoom, setZoom] = useState(1);
-  const [mode, setMode] = useState<'diagram' | 'width' | 'manual'>('diagram');
+  const [mode, setMode] = useState<'diagram' | 'width' | 'manual'>('manual');
   const [recenter, setRecenter] = useState(0);
   const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
   const viewport = useRef<HTMLDivElement>(null);
