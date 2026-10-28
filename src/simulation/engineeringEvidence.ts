@@ -7,6 +7,11 @@ import { computePumpStates } from './plant';
 import { effectiveSump } from './waterNetwork';
 import { readSensorValue } from './sensors';
 
+const formatRates = (rates: Record<string, number> | undefined) => {
+  const entries = Object.entries(rates ?? {});
+  return entries.length ? entries.map(([id, rate]) => `${id}: ${rate}`).join('; ') : 'No rates available';
+};
+
 export function engineeringBasis(mine: MineDefinition, scenario: Scenario, world: WorldState, id: string): EngineeringBasis {
   scenario = { ...scenario, overrides: world.scenarioSnapshot ?? scenario.overrides };
   const tags = mine.sensors.filter(s => s.assetId === id);
@@ -152,11 +157,11 @@ export function engineeringBasis(mine: MineDefinition, scenario: Scenario, world
       equation: 'ΔV = (Qexternal + Qtransfer,in − Qpump) Δt/3600 − Voverflow; h = stageStorage⁻¹(V)',
       inputs: [{ name: 'Stored volume', value: s.volumeM3, unit: 'm³', source: 'Canonical world.sumps' },
         { name: 'Effective storage capacity', value: geometry.capacityM3, unit: 'm³', source: 'Canonical sump × configured storage scale' },
-        { name: 'Stage-storage coordinates', value: geometry.stageStorage ? JSON.stringify(geometry.stageStorage) : `V = ${geometry.areaM2} × h`, unit: '(m, m³)', source: 'Synthetic piecewise-linear geometry, or explicitly rectangular fallback' },
+        { name: 'Stage-storage coordinates', value: geometry.stageStorage?.length ? geometry.stageStorage.map(point => `(${point.levelM}, ${point.volumeM3})`).join('; ') : `V = ${geometry.areaM2} × h`, unit: '(m, m³)', source: 'Synthetic piecewise-linear geometry, or explicitly rectangular fallback' },
         { name: 'Integration interval', value: l?.durationSec ?? world.clock.stepSec, unit: 's', source: l ? 'Recorded network ledger interval' : 'Configured timestep; no integrated ledger yet' },
         { name: 'Stage', value: s.levelM, unit: 'm above sump floor', source: 'water.ts stage-storage inverse (rectangular V/A fallback)' },
         { name: 'Inflow incl. transfers', value: s.inflowM3h, unit: 'm³/h', source: 'waterNetwork.ts explicit inflow ledger' },
-        { name: 'Actual withdrawal', value: s.outflowM3h, unit: 'm³/h', source: 'Finite available storage and calculated pumping' },
+        { name: l ? 'Actual withdrawal' : 'Pump outflow before first step', value: s.outflowM3h, unit: 'm³/h', source: l ? 'Finite available storage and calculated pumping' : 'Instantaneous modeled flow; no integrated withdrawal yet' },
         { name: 'Site residual', value: l?.residualM3 ?? 'Not stepped yet', unit: 'm³', source: 'Initial + external in − external out − overflow − final' }],
       steps: l ? [`Site initial ${l.initialM3} m³; external in ${l.externalInM3} m³.`,
         `External discharge ${l.externalOutM3} m³; overflow ${l.overflowM3} m³; final ${l.finalM3} m³.`,
@@ -168,9 +173,9 @@ export function engineeringBasis(mine: MineDefinition, scenario: Scenario, world
     return { ...common, title: 'Capacity-constrained ore movement and finite inventory', quantity: 'Available transport throughput / buffered processing',
       equation: 'max Σqzone; qroute ≤ Croute × availability; Σqroute ≤ Choist; Vinventory,next = Vinventory + Tproduced − Tprocessed; 0 ≤ inventory ≤ configured capacity',
       inputs: [
-        { name: 'Available mining source capacities', value: JSON.stringify(world.materialFlow?.zonePotentialTph ?? {}), unit: 't/h', source: 'Water/access, planned shift and restart-ramp evaluations before transport allocation' },
-        { name: 'Allocated route flows', value: JSON.stringify(world.materialFlow?.routeFlowsTph ?? {}), unit: 't/h', source: 'materialHandling.ts bounded Edmonds–Karp maximum flow' },
-        { name: 'Transported zone rates', value: JSON.stringify(world.materialFlow?.zoneRatesTph ?? {}), unit: 't/h', source: 'Flow from each zone node into available primary/alternate paths' },
+        { name: 'Available mining source capacities', value: formatRates(world.materialFlow?.zonePotentialTph), unit: 't/h', source: 'Water/access, planned shift and restart-ramp evaluations before transport allocation' },
+        { name: 'Allocated route flows', value: formatRates(world.materialFlow?.routeFlowsTph), unit: 't/h', source: 'materialHandling.ts bounded Edmonds–Karp maximum flow' },
+        { name: 'Transported zone rates', value: formatRates(world.materialFlow?.zoneRatesTph), unit: 't/h', source: 'Flow from each zone node into available primary/alternate paths' },
         { name: 'Hoist capacity', value: scenario.overrides.engineering?.hoistAvailable === false ? 0 : scenario.overrides.engineering?.hoistCapacityTph ?? material.hoistCapacityTph, unit: 't/h', source: 'Synthetic common material-handling bottleneck / scenario override' },
         { name: 'Stored ore', value: world.oreBufferTonnes ?? 0, unit: 't', source: 'Canonical world inventory' },
         { name: 'Receiving capacity', value: scenario.overrides.engineering?.oreBufferCapacityTonnes ?? material.bufferCapacityTonnes, unit: 't', source: 'Finite synthetic buffer / scenario override' },

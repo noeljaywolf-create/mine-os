@@ -18,6 +18,16 @@ const ctx = { mine: MINE, graph: new DependencyGraph(MINE.dependencies), assumpt
 const scenario = () => ({ ...createBaseline(0), id: 'intelligence-test', isBaseline: false });
 
 describe('independent evidence and simultaneous fault investigation', () => {
+  it('presents sump geometry and material rates without raw JSON', () => {
+    const s = scenario(); const w = createWorld(ctx, s, 0);
+    const sump = engineeringBasis(MINE, s, w, 'smp-101');
+    const coordinates = sump.inputs.find(input => input.name === 'Stage-storage coordinates');
+    expect(coordinates?.value).toContain('(0, 0)');
+    expect(coordinates?.value).not.toContain('levelM');
+    expect(sump.inputs.find(input => input.name === 'Pump outflow before first step')).toBeDefined();
+    const material = engineeringBasis(MINE, s, w, 'mat-hoist');
+    for (const input of material.inputs.slice(0, 3)) expect(String(input.value)).not.toMatch(/[{}"]+/);
+  });
   it('does not identify wear from low flow or label naturally large pipe losses as a fault', () => {
     const s = patchedScenario(scenario(), { engineering: { pipes: { 'smp-201': { diameterM: 0.12 } } } });
     const w = createWorld(ctx, s, 0);

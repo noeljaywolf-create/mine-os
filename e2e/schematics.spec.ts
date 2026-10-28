@@ -95,3 +95,19 @@ test('schematics contain drawing overflow at mobile, tablet and desktop sizes', 
     expect(await page.getByTestId('schematic-viewport').evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
   }
 });
+
+test('each schematic opens on an actual asset at readable zoom', async ({ page }) => {
+  for (const width of [375, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/app/digital-twin');
+    for (const view of ['Underground sectional twin', 'Electrical single-line twin', 'Hydraulic twin', 'Ore movement twin']) {
+      await page.getByRole('button', { name: view, exact: true }).click();
+      await page.getByRole('button', { name: 'Reset', exact: true }).click();
+      await expect.poll(() => page.getByTestId('schematic-viewport').evaluate(el => {
+        const viewport = el.getBoundingClientRect();
+        const node = el.querySelector<SVGRectElement>('[data-schematic-node]')?.getBoundingClientRect();
+        return !!node && node.left >= viewport.left && node.right <= viewport.right && node.top >= viewport.top && node.bottom <= viewport.bottom;
+      }), { message: `${view} should show its first asset at ${width}px` }).toBe(true);
+    }
+  }
+});

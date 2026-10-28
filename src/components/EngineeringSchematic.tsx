@@ -202,14 +202,21 @@ export function EngineeringSchematic({ view, mine, world, selection, related, on
   useLayoutEffect(() => {
     const element = viewport.current;
     if (!element) return;
-    const center = anchor.current ?? { x: 0.5, y: 0.5 };
+    // At readable zoom, begin on a real card instead of the middle of a tall,
+    // potentially empty canvas. Explicit fit modes still center the whole drawing.
+    const firstNode = svg.current?.querySelector<SVGRectElement>('[data-schematic-node]');
+    const initialCenter = mode === 'manual' && firstNode
+      ? { x: (firstNode.x.baseVal.value + firstNode.width.baseVal.value / 2) / width,
+        y: (firstNode.y.baseVal.value + firstNode.height.baseVal.value / 2) / height }
+      : { x: 0.5, y: 0.5 };
+    const center = anchor.current ?? initialCenter;
     element.scrollTo({
       left: (stageWidth - width * scale) / 2 + center.x * width * scale - element.clientWidth / 2,
       top: (stageHeight - height * scale) / 2 + center.y * height * scale - element.clientHeight / 2,
       behavior: 'instant',
     });
     anchor.current = null;
-  }, [scale, stageWidth, stageHeight, width, height, mode, recenter, viewportSize.width, viewportSize.height]);
+  }, [scale, stageWidth, stageHeight, width, height, mode, recenter, viewportSize.width, viewportSize.height, view]);
 
   return <section className="mt-4 min-w-0" aria-label={INFO[view].title}>
     <div className="flex flex-wrap items-start justify-between gap-3 border-y border-ink-700/70 bg-ink-900/50 px-3 py-3">
@@ -233,7 +240,7 @@ export function EngineeringSchematic({ view, mine, world, selection, related, on
       </div>
     </div>
     <div className="flex flex-wrap items-center justify-between gap-2 px-1 py-3 text-xs text-ink-300">
-      <p>Fit diagram centers the full drawing · zoom around the viewport center · scroll to explore details</p>
+      <p>Reset opens at the first asset · Fit diagram centers the overview · scroll to explore details</p>
       <div className="flex flex-wrap gap-3"><span className="text-signal-cyanBright">Cyan: selected / linked</span><span className="text-signal-red">Red: failed / blocked</span><span className="text-signal-amber">Amber: constrained</span></div>
     </div>
   </section>;
