@@ -1,5 +1,16 @@
 import { expect, test } from '@playwright/test';
 
+test('water formula explains its terms and presents geometry without raw JSON', async ({ page }) => {
+  await page.goto('/app/dewatering');
+  await page.locator('[data-engineering-proof="smp-101"]').click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('In plain language');
+  await expect(dialog).toContainText('dividing by 3,600');
+  const coordinates = dialog.getByRole('row').filter({ hasText: 'Stage-storage coordinates' });
+  await expect(coordinates).toContainText('(0, 0)');
+  await expect(coordinates).not.toContainText('levelM');
+});
+
 test('hydraulic condition changes shared flow, exposes basis, and preserves state across routes', async ({ page }) => {
   const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
   await page.goto('/app/engineering');

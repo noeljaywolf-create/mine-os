@@ -14,6 +14,8 @@ test('schematic cards stay separated, labels fit, and selection links operating 
         w: node.width.baseVal.value, h: node.height.baseVal.value,
       }));
       const problems: string[] = [];
+      const viewBox = (element as SVGSVGElement).viewBox.baseVal;
+      for (const node of nodes) if (node.x < viewBox.x || node.y < viewBox.y || node.x + node.w > viewBox.x + viewBox.width || node.y + node.h > viewBox.y + viewBox.height) problems.push(`${node.id} is outside the drawing`);
       for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j++) {
         const a = nodes[i]; const b = nodes[j];
         if (a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y) problems.push(`${a.id} overlaps ${b.id}`);

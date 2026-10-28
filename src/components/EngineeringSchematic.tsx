@@ -80,7 +80,8 @@ export function EngineeringSchematic({ view, mine, world, selection, related, on
       const pumpRows = Math.max(1, ...sumps.map(s => Math.ceil(mine.pumps.filter(p => p.sumpId === s.id).length / 2)));
       return { level, sumps, zones, pumpRows, height: 256 + pumpRows * 160 + (zones.length ? 188 : 0) };
     });
-    width = Math.max(1100, 180 + Math.max(1, ...rows.map(r => r.sumps.length)) * 580);
+    width = Math.max(1100, 180 + Math.max(1, ...rows.map(r => r.sumps.length)) * 580,
+      190 + Math.max(0, ...rows.map(r => r.zones.length - 1)) * 290 + W);
     height = 32 + rows.reduce((total, r) => total + r.height, 0);
     let top = 16;
     drawing = <><path d={`M98 48V${height - 40}`} stroke="#40566c" strokeWidth={8} />{rows.map(row => {
@@ -161,7 +162,8 @@ export function EngineeringSchematic({ view, mine, world, selection, related, on
     })}</>;
   } else {
     width = 1680;
-    height = Math.max(680, 100 + Math.max(mine.zones.length, mine.materialHandling?.routes.length ?? 0) * 190);
+    height = Math.max(680, 100 + Math.max(0, mine.zones.length - 1) * 250 + H + 40,
+      100 + Math.max(0, (mine.materialHandling?.routes.length ?? 0) - 1) * 190 + H + 40);
     const center = 296;
     const routes = mine.materialHandling?.routes ?? [];
     drawing = <>

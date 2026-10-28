@@ -202,8 +202,8 @@ export function DependencyGraph({
         edges={edges}
         nodeTypes={nodeTypes}
         fitView
-        fitViewOptions={{ padding: 0.18, minZoom: 0.45, maxZoom: 1.1 }}
-        minZoom={0.3}
+        fitViewOptions={{ padding: 0.18, minZoom: 0.05, maxZoom: 1.1 }}
+        minZoom={0.05}
         maxZoom={1.6}
         proOptions={{ hideAttribution: true }}
         nodesDraggable={false}
@@ -219,7 +219,7 @@ export function DependencyGraph({
         <Controls showInteractive={false} position="bottom-right" />
       </ReactFlow>
       <div className="pointer-events-none absolute left-2 top-2 rounded-[2px] border border-[color:var(--hairline)] bg-ink-900/80 px-2 py-1">
-        <span className="label-micro text-ink-400">Schematic dependency view · not surveyed geometry</span>
+        <span className="label-micro text-ink-400">Equipment connections · use + to zoom · not a mine survey</span>
       </div>
     </div>
   );

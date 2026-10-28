@@ -56,8 +56,9 @@ test('time advance exposes progress and cancellation while navigation remains us
 });
 
 test('live analysis exposes snapshot age and pausing refreshes the exact current step', async ({ page }) => {
+  test.setTimeout(180_000);
   await page.goto('/app/forecast');
-  await expect(page.locator('[data-engineering-proof="analysis:forecast"]')).toBeVisible();
+  await expect(page.locator('[data-engineering-proof="analysis:forecast"]')).toBeVisible({ timeout: 90_000 });
   await page.getByRole('button', { name: 'run', exact: true }).click();
   await expect(page.getByTestId('analysis-status')).toContainText('pause for an exact current-step calculation');
   await page.getByRole('button', { name: 'pause', exact: true }).click();

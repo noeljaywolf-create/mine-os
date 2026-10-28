@@ -3,6 +3,7 @@ import { ArrowRight, Droplets, Play, Zap } from 'lucide-react';
 import { MODULE_BY_ID } from '../app/modules';
 import { ModuleHeader, PanelTitle } from '../components/ModuleHeader';
 import { DependencyGraph } from '../components/DependencyGraph';
+import { OperationsDesk } from '../components/OperationsDesk';
 import {
   Badge,
   Button,
@@ -77,6 +78,8 @@ export function MissionControl() {
           </span>
         </div>
       </ModuleHeader>
+
+      <OperationsDesk />
 
       <MetricGrid cols={5}>
         <MetricCell>

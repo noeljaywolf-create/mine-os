@@ -10,6 +10,15 @@ export function EngineeringBasis({ assetId, providedBasis }: { assetId: string; 
   const mine = useMineStore(s => s.mine);
   const scenario = useActiveScenario();
   const world = useDisplayWorld();
+  const explanation = mine.sumps.some(s => s.id === assetId)
+    ? 'Water stored changes by the water entering, plus transfers in, minus water pumped and any overflow. The water level is found from the sump’s storage curve. Δt is the step length in seconds; dividing by 3,600 converts hourly flows to the amount for that step.'
+    : mine.pumps.some(p => p.id === assetId)
+      ? 'The pump must overcome the height difference, receiving pressure and losses in the pipe. Q is water flow, H is head (energy per unit weight, shown in metres), and η is efficiency. Power depends on flow, head and efficiency.'
+      : assetId === 'site:water'
+        ? 'The water balance compares starting storage plus water entering with water leaving, overflow and ending storage. A residual near zero indicates numerical balance, not measurement accuracy.'
+        : assetId === 'site:energy'
+          ? 'Energy is power multiplied by time. Cost is the energy used in each interval multiplied by that interval’s assumed electricity price.'
+          : null;
   const basis = useMemo(() => open ? providedBasis ?? engineeringBasis(mine, { ...scenario, overrides: world.scenarioSnapshot ?? scenario.overrides }, world, assetId) : null,
     [mine, scenario, world, assetId, open, providedBasis]);
   return <>
@@ -17,7 +26,8 @@ export function EngineeringBasis({ assetId, providedBasis }: { assetId: string; 
     {basis && <Dialog open={open} onClose={() => setOpen(false)} title={basis.title} width="850px">
       <div className="space-y-3 p-4 text-xs text-ink-300">
         <p>{basis.quantity} · {basis.modelVersion}</p>
-        <p className="border border-ink-700 bg-ink-950 p-3 font-mono text-signal-cyanBright">{basis.equation}</p>
+        {explanation && <p className="leading-relaxed"><strong>In plain language: </strong>{explanation}</p>}
+        <div><h3 className="mb-1 font-semibold text-ink-100">Formula</h3><p className="overflow-x-auto border border-ink-700 bg-ink-950 p-3 font-mono text-signal-cyanBright">{basis.equation}</p></div>
         <TableShell><thead><tr><Th>Input</Th><Th>Value</Th><Th>Units</Th><Th>Source</Th></tr></thead><tbody>
           {basis.inputs.map(i => <tr key={i.name}><Td>{i.name}</Td><Td>{typeof i.value === 'number' ? Number(i.value.toPrecision(8)) : i.value}</Td><Td>{i.unit}</Td><Td>{i.source}</Td></tr>)}
         </tbody></TableShell>
