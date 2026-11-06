@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Droplets, Play, Zap } from 'lucide-react';
 import { MODULE_BY_ID } from '../app/modules';
@@ -24,6 +25,7 @@ import { useMineStore } from '../store/mineStore';
 import { formatDurationHours, formatFlow, formatLevel, formatMoney, formatTonnes } from '../domain/units';
 
 export function MissionControl() {
+  const [workspace, setWorkspace] = useState<'overview' | 'controls'>('overview');
   const mine = useMineStore((s) => s.mine);
   const derived = useDerived();
   const forecasts = useForecasts();
@@ -36,6 +38,7 @@ export function MissionControl() {
   const running = useMineStore((s) => s.running);
 
   const waterRows = analytics.waterBalance;
+  const forecastsReady = Boolean(forecasts && mine.sumps.every(s => forecasts[s.id]?.points.length));
   const worst = [...waterRows].sort(
     (a, b) => (a.timeToCriticalHours ?? Number.POSITIVE_INFINITY) - (b.timeToCriticalHours ?? Number.POSITIVE_INFINITY),
   )[0];
@@ -79,8 +82,14 @@ export function MissionControl() {
         </div>
       </ModuleHeader>
 
-      <OperationsDesk />
-
+      <div className="my-4 rounded-lg border border-ink-700 bg-gradient-to-r from-ink-900 to-ink-850 px-4 py-4 sm:px-6 sm:py-5">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-signal-cyanBright">Mine operations · simulation</p>
+        <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
+          <div><h2 className="text-xl font-semibold tracking-tight text-ink-50 sm:text-2xl">One clear view of the mine</h2>
+            <p className="mt-1 max-w-2xl text-sm leading-relaxed text-ink-300">See how water, power and production connect. Explore a scenario without affecting real equipment.</p></div>
+          <Link to="/app/scenarios" className="rounded-md border border-ink-600 px-3 py-2 text-xs font-medium text-ink-100 transition-colors hover:border-signal-cyan hover:text-signal-cyanBright">Explore scenarios →</Link>
+        </div>
+      </div>
       <MetricGrid cols={5}>
         <MetricCell>
           <Metric
@@ -88,10 +97,10 @@ export function MissionControl() {
             value={
               worst?.timeToCriticalHours != null
                 ? formatDurationHours(worst.timeToCriticalHours)
-                : 'None projected'
+                : !forecastsReady ? 'Unavailable' : 'Not reached'
             }
-            hint={`${worst?.sumpName ?? '—'} · central estimate`}
-            tone={worst?.timeToCriticalHours != null && worst.timeToCriticalHours < 6 ? 'red' : 'green'}
+            hint={worst?.timeToCriticalHours != null ? `${worst.sumpName} · estimated` : forecastsReady ? 'Within forecast window only' : 'Forecast loading or unavailable'}
+            tone={worst?.timeToCriticalHours != null && worst.timeToCriticalHours < 6 ? 'red' : 'neutral'}
           />
         </MetricCell>
         <MetricCell>
@@ -129,11 +138,17 @@ export function MissionControl() {
         </MetricCell>
       </MetricGrid>
 
+      <div role="group" aria-label="Mission Control sections" className="mt-5 flex flex-wrap gap-2 border-b border-ink-700 pb-3">
+        <button type="button" aria-pressed={workspace === 'overview'} onClick={() => setWorkspace('overview')} className={cx('rounded-md px-4 py-2 text-sm font-medium transition-colors', workspace === 'overview' ? 'bg-signal-cyan/15 text-signal-cyanBright' : 'text-ink-300 hover:bg-ink-800 hover:text-ink-50')}>Overview</button>
+        <button type="button" aria-pressed={workspace === 'controls'} onClick={() => setWorkspace('controls')} className={cx('rounded-md px-4 py-2 text-sm font-medium transition-colors', workspace === 'controls' ? 'bg-signal-cyan/15 text-signal-cyanBright' : 'text-ink-300 hover:bg-ink-800 hover:text-ink-50')}>Pump &amp; generator controls</button>
+      </div>
+      <div hidden={workspace !== 'controls'}><OperationsDesk /></div>
+      <div hidden={workspace !== 'overview'}>
       <div className="mt-2 grid gap-2 xl:grid-cols-[1.55fr_1fr]">
         <div className="space-y-2">
           <Panel>
             <PanelTitle right={<Link to="/app/dewatering" className="text-[10px] text-ink-400 hover:text-ink-100">water balance →</Link>}>
-              Sump inventory and projected threshold crossings
+              Water storage &amp; outlook
             </PanelTitle>
             <div className="grid gap-px bg-[color:var(--hairline)] sm:grid-cols-2">
               {waterRows.map((row) => {
@@ -171,7 +186,7 @@ export function MissionControl() {
                       <span className={row.timeToCriticalHours != null ? toneText('amber') : 'text-ink-500'}>
                         {forecast?.timeToCriticalHours != null
                           ? `crit in ${formatDurationHours(forecast.timeToCriticalHours)}`
-                          : 'no projected breach'}
+                          : !forecast?.points.length ? 'forecast loading' : 'no breach within forecast'}
                       </span>
                     </div>
                   </button>
@@ -189,7 +204,7 @@ export function MissionControl() {
                 </div>
               }
             >
-              Dependency graph · live propagation
+              Equipment connections · simulated
             </PanelTitle>
             <div className="p-2">
               <DependencyGraph height={318} onSelect={(assetId) => selectAsset({ assetId })} />
@@ -340,6 +355,7 @@ export function MissionControl() {
             </div>
           </Panel>
         </div>
+      </div>
       </div>
     </div>
   );

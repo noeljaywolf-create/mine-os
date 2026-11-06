@@ -1,7 +1,22 @@
 import { expect, test } from '@playwright/test';
 
+test('overview and controls are clearly separated', async ({ page }) => {
+  await page.goto('/app');
+  const overview = page.getByRole('button', { name: 'Overview', exact: true });
+  const controls = page.getByRole('button', { name: 'Pump & generator controls' });
+  await expect(overview).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByText('One clear view of the mine')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Simulated pump controls' })).toBeHidden();
+  await controls.click();
+  await expect(controls).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('region', { name: 'Simulated pump controls' })).toBeVisible();
+  await overview.click();
+  await expect(page.getByRole('region', { name: 'Simulated pump controls' })).toBeHidden();
+});
+
 test('operations desk previews simulation changes without modifying the protected baseline', async ({ page }) => {
   await page.goto('/app');
+  await page.getByRole('button', { name: 'Pump & generator controls' }).click();
   const desk = page.getByRole('region', { name: 'Simulated pump controls' });
   await expect(page.getByText('Simulation only.', { exact: false }).first()).toBeVisible();
   await desk.getByRole('button', { name: 'Preview stop' }).first().click();
@@ -18,6 +33,7 @@ test('operations desk previews simulation changes without modifying the protecte
 
 test('handover exports a clearly labelled simulation summary', async ({ page }) => {
   await page.goto('/app');
+  await page.getByRole('button', { name: 'Pump & generator controls' }).click();
   await page.getByLabel('Notes for the next shift').fill('Check sump levels');
   const downloadPromise = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Download simulation summary' }).click();
@@ -29,6 +45,7 @@ test('an editable scenario can apply reviewed pump and generator changes', async
   await page.goto('/app/engineering');
   await page.getByRole('button', { name: 'Create editable branch' }).click();
   await page.getByRole('link', { name: 'Mission Control', exact: true }).click();
+  await page.getByRole('button', { name: 'Pump & generator controls' }).click();
   const desk = page.getByRole('region', { name: 'Simulated pump controls' });
   await desk.getByRole('button', { name: 'Preview stop' }).first().click();
   let preview = page.getByRole('region', { name: 'Preview simulation change' });

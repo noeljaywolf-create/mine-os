@@ -51,7 +51,7 @@ export function AppShell() {
   const clock = useSimClock();
   const capabilities = useCapabilities();
 
-  const [inspectorOpen, setInspectorOpen] = useState(() => window.matchMedia('(min-width: 1280px)').matches);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [scenarioOpen, setScenarioOpen] = useState(false);
 
@@ -121,7 +121,7 @@ export function AppShell() {
             <span>T+{clock.elapsedSec < 3600 ? `${Math.floor(clock.elapsedSec / 60)}m` : `${(clock.elapsedSec / 3600).toFixed(2)}h`}</span>
             <span className="text-ink-600">·</span>
             <span className={running ? 'text-signal-green' : 'text-ink-500'}>
-              {running ? `${speed}× live` : 'paused'}
+              {running ? `${speed}× simulation` : 'simulation paused'}
             </span>
           </div>
         </div>
