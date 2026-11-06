@@ -4,6 +4,8 @@ Operational intelligence for underground mining — a demonstration build with a
 
 **Live demo:** https://noeljaywolf-create.github.io/mine-os/
 
+**User and engineering guide:** [MINE-OS-USER-AND-ENGINEERING-GUIDE.md](./MINE-OS-USER-AND-ENGINEERING-GUIDE.md) — screen-by-screen instructions, graphs, formulas, units and simulation limits.
+
 MINE OS connects dewatering, power and production into one operating picture. Two products share a single engine:
 
 - **DeepWater Intelligence** — sump water balance, level forecasts, pumping capability and uncertainty.
