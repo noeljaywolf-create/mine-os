@@ -85,8 +85,8 @@ export function MineImpact() {
             <BarChart
               categories={analytics.zones.map((zone) => zone.zoneName.replace('Zone ', ''))}
               series={[
-                { name: 'current', data: analytics.zones.map((zone) => Number(zone.rateTph.toFixed(1))), color: '#4f8ff7' },
-                { name: 'design', data: analytics.zones.map((zone) => zone.designRateTph), color: '#2a3a52' },
+                { name: 'current', data: analytics.zones.map((zone) => Number(zone.rateTph.toFixed(1))), color: '#65D6E8' },
+                { name: 'design', data: analytics.zones.map((zone) => zone.designRateTph), color: '#A9B8CA' },
               ]}
               height={220}
               yName="t/h"

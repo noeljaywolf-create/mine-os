@@ -37,7 +37,7 @@ export function HydraulicAnalyser() {
     xAxis: { type: 'value', name: 'Q m³/h', nameLocation: 'middle', nameGap: 30, axisLabel: { color: '#8291a4' } },
     yAxis: { type: 'value', name: 'Head m', axisLabel: { color: '#8291a4' }, max: Math.max(...series.map(p => p.pumpHeadM), pipe.staticHeadM * 1.5) * 1.2 },
     series: [{ name: 'Combined station pump curve', type: 'line', showSymbol: false, data: series.map(p => [p.flowM3h, p.pumpHeadM]), lineStyle: { color: '#6fd3e6' } },
-      { name: 'Shared-main system curve', type: 'line', showSymbol: false, data: series.map(p => [p.flowM3h, p.systemHeadM]), lineStyle: { color: '#df9a38' } },
+      { name: 'Shared-main system curve', type: 'line', showSymbol: false, data: series.map(p => [p.flowM3h, p.systemHeadM]), lineStyle: { color: '#F4C06A', type: 'dashed', width: 2 } },
       { name: 'Calculated station duty', type: 'scatter', symbolSize: 12, data: state.hydraulic?.status === 'solved' ? [[stationFlow, state.hydraulic.headM]] : [], itemStyle: { color: '#48d597' } }] }), [series, stationFlow, state.hydraulic, pipe.staticHeadM]);
   const editable = !scenario.isBaseline && !replay;
   const apply = (p: Parameters<typeof patch>[0]) => setMessage(patch(p).message);

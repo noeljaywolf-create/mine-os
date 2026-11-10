@@ -98,8 +98,8 @@ export function Energy() {
             <BarChart
               categories={demandByFeeder.map((row) => row.feeder.name.replace('Feeder ', 'F-'))}
               series={[
-                { name: 'connected load', data: demandByFeeder.map((row) => Number(row.load.toFixed(0))), color: '#4f8ff7' },
-                { name: 'firm capability', data: demandByFeeder.map((row) => Number(row.capacityKw.toFixed(0))), color: '#2a3a52' },
+                { name: 'connected load', data: demandByFeeder.map((row) => Number(row.load.toFixed(0))), color: '#65D6E8' },
+                { name: 'firm capability', data: demandByFeeder.map((row) => Number(row.capacityKw.toFixed(0))), color: '#A9B8CA' },
               ]}
               height={210}
               yName="kW"

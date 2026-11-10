@@ -387,7 +387,10 @@ export function ForecastChart(props: {
   color?: string;
   showBand?: boolean;
 }) {
-  return <EChart option={forecastOption(props)} height={props.height ?? 220} />;
+  return <div>
+    <EChart option={forecastOption(props)} height={props.height ?? 220} />
+    <p className="px-2 pb-2 text-xs leading-relaxed text-ink-300">Solid line: projected water level · Dashed upper line and shading, when shown: higher-inflow scenario range · Labeled horizontal lines: configured thresholds. Estimates are simulated, not probabilities.</p>
+  </div>;
 }
 
 export function BarChart(props: {

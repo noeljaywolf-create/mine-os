@@ -86,8 +86,8 @@ export function Production() {
             <BarChart
               categories={analytics.zones.map((zone) => zone.zoneName)}
               series={[
-                { name: 'current t/h', data: analytics.zones.map((zone) => Number(zone.rateTph.toFixed(1))), color: '#4f8ff7' },
-                { name: 'design t/h', data: analytics.zones.map((zone) => zone.designRateTph), color: '#2a3a52' },
+                { name: 'current t/h', data: analytics.zones.map((zone) => Number(zone.rateTph.toFixed(1))), color: '#65D6E8' },
+                { name: 'design t/h', data: analytics.zones.map((zone) => zone.designRateTph), color: '#A9B8CA' },
               ]}
               height={230}
               yName="t/h"

@@ -33,16 +33,16 @@ echarts.use([
 ]);
 
 export const CHART_COLORS = {
-  grid: 'rgba(148,163,184,0.12)',
-  axis: '#5A6779',
-  label: '#8494A6',
+  grid: 'rgba(180,195,210,0.22)',
+  axis: '#94A9B9',
+  label: '#BDCADA',
   text: '#DCE3EA',
-  blue: '#2F6FEB',
-  cyan: '#2BB3D6',
-  cyanBright: '#4FD1E5',
-  green: '#1E9E5A',
-  amber: '#D98A0B',
-  red: '#D33F3F',
+  blue: '#78AFFF',
+  cyan: '#65D6E8',
+  cyanBright: '#8AE8F4',
+  green: '#69D8A2',
+  amber: '#F4C06A',
+  red: '#FF8A8A',
   violet: '#7A5AF8',
   teal: '#1F9C93',
 };
