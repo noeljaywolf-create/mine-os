@@ -1,5 +1,12 @@
 # MINE OS milestone record
 
+## Build and browser verification — 10 November 2026
+
+- After freeing memory, `npm run build:publish` and `npm run build` succeeded on the current source, including the Mission Control and chart-contrast changes.
+- `npm test` passed 100 tests. A fresh standalone preview on port 4288 passed all 27 registered Chromium tests, including operations controls, responsive schematics and route rendering.
+- This is automated software verification, not a complete human-factors or engineering audit, field validation, or certification. The application remains a synthetic simulation with no real-equipment control.
+- The repository is public again. GitHub Pages must be re-enabled separately after the published build is pushed.
+
 ## Frontend and documentation milestone — 6 November 2026
 
 - The repository was made private. GitHub Pages was disabled as a consequence; no protected investor demo has been established yet.
