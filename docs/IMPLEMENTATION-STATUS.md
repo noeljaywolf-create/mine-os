@@ -1,13 +1,24 @@
 # MINE OS Implementation Status (Pilot MVP)
 
-## Completed (Steps 1 foundations)
+## Step 1 — Complete (verified)
 - **Pluggable, device-agnostic integration (core unchanged):** gateway HTTP adapter, pilot CSV/replay bundle, canonical observation seam, Quick Connect/probe, saved connection profiles, mapping-driven configs.
-- **Operating modes (both):** `test` (read-only external dispatch, safe for validation) and `operational` (audited control-intent dispatch to configured gateway endpoints). Persisted and UI-managed in Governance.
+- **Operating modes (both):** `test` (read-only external dispatch, safe for validation) and `operational` (audited control-intent dispatch to configured gateway endpoints, optional `POST /control`). Persisted and UI-managed in Governance.
 - **Alerts & health:** configurable rules/events (sensor value/freshness, sump level/fill), live/replay evaluation, ack/clear, connection & device health dashboard.
 - **Persistence & evidence (MVP):** local browser persistence for session/auth, profiles, alert rules, last gateway, capped history; exportable history/evidence/report bundles.
 - **Access & governance:** pilot sign-in/session, role-based capabilities, audit/activity trails, updated governance/readiness boundaries.
 - **Expert engineering configurations & builds:** expert templates (`pilot-data/expert/*`), Engineering Configurations & Builds module, commissioning/QA/data-quality artifacts, build profiles (`dev/pilot/production-static/github-pages`).
-- **Verification:** `npm run typecheck` passes, `npm run test` passes (100 tests), `npm run build` succeeds.
+- **Verification:** `npm run typecheck` passes, `npm run test` passes (100 tests), `npm run build` succeeds. Committed.
+
+## Step 2 — Pilot readiness (artifacts ready; requires site/gateway access)
+- Mock gateway for local smoke test: `node scripts/mock-gateway.mjs 8090` (serves `/health,/catalog,/samples/latest,/control`).
+- Checklist: `docs/PILOT-READINESS-CHECKLIST.md`. Expert templates: `pilot-data/expert/*`. Real device/site connectivity, mapping validation, calibration, and approvals must be performed per site.
+
+## Step 3 — Production hardening (foundations & plan)
+- Roadmap/architecture: `docs/PRODUCTION-HARDENING-AND-EVOLUTION.md`.
+- Storage abstraction foundation: `src/integration/storage.ts` (swappable backend). Enterprise SSO/TSDB/HA/OT hardening/V&V require server/infra implementation.
+
+## Step 4 — Product evolution (plan)
+- Evolution tracks documented in `docs/PRODUCTION-HARDENING-AND-EVOLUTION.md` (alarm/SOP/CMMS/FMS/planning/BI/energy/explainability) — integrate via config/adapters/services without core rewrites.
 
 ## Pilot readiness (Step 2) - requires site/gateway access
 - Deploy/configure read-only gateway exposing `/health`, `/catalog`, `/samples/latest` (and optional `/control` in operational mode).
