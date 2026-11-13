@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+﻿import { create } from 'zustand';
 import type {
   Action,
   ActionKind,
@@ -18,7 +18,6 @@ import type {
 import type { MineDefinition } from '../domain/mine';
 import { MINE } from '../data/mine';
 import { buildLibrary, createBaseline } from '../data/scenarios';
-import type { DependencyGraph } from '../simulation/graph';
 import { MINE_GRAPH } from '../simulation';
 import { DEFAULT_ASSUMPTIONS } from '../simulation/assumptions';
 import {
@@ -34,8 +33,62 @@ import { detectIncidents, transitionIncident } from '../simulation/incidents';
 import { cloneOverrides, mergeEngineering } from '../simulation/scenarios';
 import { hasCapability, ROLE_BY_ID, roleName } from '../domain/roles';
 import type { Capability } from '../domain/types';
+import { DependencyGraph } from '../simulation/graph';
+import { loadPilotDataset, buildMineFromPilotConfig, type PilotDataset } from '../integration/pilot';
+import { GatewayHttpAdapter } from '../integration/connections';
 
-/** Simulated seconds advanced per real second at 1× speed. */
+function appendHistory(record: any) {
+  try {
+    const key = 'mineos.history';
+    const arr = JSON.parse(localStorage.getItem(key) || '[]');
+    arr.push(record);
+    const capped = arr.slice(-1000);
+    localStorage.setItem(key, JSON.stringify(capped));
+  } catch {}
+}
+
+export interface AlertRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  targetKind: 'sensor' | 'sump';
+  targetId: string;
+  metric: 'value' | 'levelM' | 'fillRatio' | 'freshness';
+  operator: '>' | '>=' | '<' | '<=' | '==' | '!=';
+  threshold: number | string;
+  severity: 'info' | 'warning' | 'critical';
+}
+export interface AlertEvent {
+  id: string;
+  ruleId: string;
+  name: string;
+  severity: 'info' | 'warning' | 'critical';
+  message: string;
+  atMs: number;
+  atSimSec: number;
+  targetId: string;
+  value: number | string | null;
+  acknowledged: boolean;
+}
+
+export type OperatingMode = 'test' | 'operational';
+export interface ControlIntent {
+  id: string;
+  atMs: number;
+  actor: string;
+  role: string;
+  mode: OperatingMode;
+  target: string;
+  action: string;
+  payload?: any;
+  status: 'blocked-test-mode' | 'queued' | 'dispatched' | 'failed' | 'simulated-only';
+  detail?: string;
+}
+
+let gatewayPoller: ReturnType<typeof setInterval> | null = null;
+let gatewayAdapter: GatewayHttpAdapter | null = null;
+
+/** Simulated seconds advanced per real second at 1Ã— speed. */
 export const SIM_SECONDS_PER_REAL_SECOND = 300;
 /** Replay frame interval in simulated seconds. */
 const FRAME_INTERVAL_SEC = 300;
@@ -101,6 +154,23 @@ export interface MineState {
   activeScenarioId: ScenarioId;
   runs: Record<ScenarioId, ScenarioRun>;
 
+  // ---- pilot / real-data MVP (pluggable data source)
+  pilot: {
+    mode: 'synthetic' | 'pilot-replay' | 'live-gateway';
+    dataset: import('../integration/pilot').PilotDataset | null;
+    replayAtMs: number | null;
+    replayEndMs: number | null;
+    lastError: string | null;
+    gatewayUrl: string | null;
+    liveObservations: Record<string, { sensorId: string; epochMs: number; value: number; quality: number; unit: string }> | null;
+  };
+  loadPilotBundle: (files: { config: File; telemetry: File }) => Promise<ActionResult>;
+  probeGateway: (gatewayUrl: string) => Promise<{ ok: boolean; message: string; details?: any }>;
+  connectGateway: (input: { gatewayUrl: string; config?: import('../integration/pilot').PilotSiteConfig | null }) => Promise<ActionResult>;
+  disconnectGateway: () => ActionResult;
+  unloadPilot: () => ActionResult;
+  setPilotReplayTime: (epochMs: number | null) => void;
+
   role: UserRole;
   actorName: string;
   running: boolean;
@@ -126,6 +196,18 @@ export interface MineState {
     summary: string;
     refs: string[];
   }>;
+
+  alertRules: AlertRule[];
+  alertEvents: AlertEvent[];
+  upsertAlertRule: (rule: AlertRule) => void;
+  removeAlertRule: (id: string) => void;
+  acknowledgeAlert: (id: string) => void;
+  clearAlerts: () => void;
+
+  operatingMode: OperatingMode;
+  controlIntents: ControlIntent[];
+  setOperatingMode: (mode: OperatingMode) => ActionResult;
+  dispatchControlIntent: (intent: { target: string; action: string; payload?: any; gatewayUrl?: string; controlPath?: string }) => Promise<ActionResult>;
 
   // ---- derived access helpers
   getRun: () => ScenarioRun;
@@ -185,7 +267,7 @@ export interface MineState {
 }
 
 // ---------------------------------------------------------------------------
-// Personas — demonstration identities, not authenticated users.
+// Personas â€” demonstration identities, not authenticated users.
 const PERSONAS: Record<UserRole, string> = {
   'control-room-operator': 'D. Mensah',
   'electrical-engineer': 'R. Okafor',
@@ -267,6 +349,86 @@ function logActivity(
   ].slice(-300);
 }
 
+function pilotObservations(state: MineState, epochMs: number): Record<string, any> | undefined {
+  const ds = state.pilot.dataset;
+  if (state.pilot.mode === 'live-gateway' && state.pilot.liveObservations) return state.pilot.liveObservations;
+  if (state.pilot.mode !== 'pilot-replay' || !ds) return undefined;
+  // Build latest sample per sensor at/before epochMs (MVP linear scan acceptable for sample datasets)
+  const out: Record<string, any> = {};
+  const latest: Record<string, (typeof ds.samples)[number]> = {};
+  for (const s of ds.samples) {
+    if (s.epochMs <= epochMs) latest[s.sensorId] = s; else break;
+  }
+  for (const [id, s] of Object.entries(latest)) {
+    const mapping = ds.config.sensors.find(m => m.sensorId === id || m.sourceTag === s.sourceTag);
+    out[id] = { sensorId: id, epochMs: s.epochMs, value: s.value, quality: s.quality, unit: s.unit ?? mapping?.unit ?? 'm' };
+  }
+  return out;
+}
+
+function evaluateAlertRules(state: MineState, world: WorldState, _nowMs: number): { alertEvents: AlertEvent[]; toasts: Toast[] } {
+  const rules = (state.alertRules ?? []).filter(r => r.enabled);
+  if (rules.length === 0) return { alertEvents: state.alertEvents ?? [], toasts: state.toasts };
+  const events = [...(state.alertEvents ?? [])];
+  const toasts = [...state.toasts];
+  const simSec = world.clock.elapsedSec;
+  const currentEpoch = world.clock.epochMs + simSec * 1000;
+  const recentKey = new Set(events.filter(e => currentEpoch - e.atMs < 60000).map(e => `${e.ruleId}|${e.targetId}`));
+  for (const rule of rules) {
+    let value: number | string | null = null;
+    let ok = false;
+    if (rule.targetKind === 'sensor') {
+      const s = world.sensors[rule.targetId as SensorId];
+      if (!s) continue;
+      if (rule.metric === 'freshness') value = s.freshness;
+      else if (rule.metric === 'value') value = s.lastValue;
+      else value = s.lastValue;
+    } else {
+      const sump = world.sumps[rule.targetId];
+      if (!sump) continue;
+      if (rule.metric === 'levelM') value = sump.levelM;
+      else if (rule.metric === 'fillRatio') value = sump.fillRatio;
+      else value = sump.fillRatio;
+    }
+    if (value === null || value === undefined) continue;
+    const thr = rule.threshold as any;
+    const cmp = (a: any, b: any) => {
+      switch (rule.operator) {
+        case '>': return Number(a) > Number(b);
+        case '>=': return Number(a) >= Number(b);
+        case '<': return Number(a) < Number(b);
+        case '<=': return Number(a) <= Number(b);
+        case '==': return String(a) === String(b);
+        case '!=': return String(a) !== String(b);
+        default: return false;
+      }
+    };
+    ok = cmp(value, thr);
+    if (ok) {
+      const key = `${rule.id}|${rule.targetId}`;
+      if (recentKey.has(key)) continue;
+      const ev: AlertEvent = {
+        id: uid('alrt'),
+        ruleId: rule.id,
+        name: rule.name,
+        severity: rule.severity,
+        message: `${rule.name}: ${rule.targetId} ${rule.metric}=${value} ${rule.operator} ${rule.threshold}`,
+        atMs: currentEpoch,
+        atSimSec: simSec,
+        targetId: rule.targetId,
+        value,
+        acknowledged: false,
+      };
+      events.unshift(ev);
+      recentKey.add(key);
+      if (rule.severity !== 'info') {
+        toasts.push({ id: uid('toast'), kind: rule.severity === 'critical' ? 'error' : 'warning', title: `Alert Â· ${rule.severity}`, message: ev.message, atMs: currentEpoch });
+      }
+    }
+  }
+  return { alertEvents: events.slice(0, 500), toasts: toasts.slice(-4) };
+}
+
 /**
  * Advance the active scenario by a number of integration steps.
  * This is the only place where the canonical state moves forward.
@@ -286,7 +448,11 @@ function advance(state: MineState, steps: number): Partial<MineState> {
   const dt = world.clock.stepSec;
 
   for (let i = 0; i < steps; i += 1) {
-    const result = stepWorld(ctx, scenario, world, dt);
+    const targetMs = world.clock.epochMs + (world.clock.elapsedSec + dt) * 1000;
+    if (state.pilot.mode === 'pilot-replay' && state.pilot.replayEndMs && targetMs > state.pilot.replayEndMs + dt * 1000) break;
+    const observations = pilotObservations(state, targetMs);
+    const worldIn = observations ? { ...world, observations } : world;
+    const result = stepWorld(ctx, scenario, worldIn, dt);
     world = result.world;
     stepsTaken += 1;
     if (world.clock.elapsedSec - lastFrameSimSec >= FRAME_INTERVAL_SEC) {
@@ -333,7 +499,7 @@ function advance(state: MineState, steps: number): Partial<MineState> {
       toasts.push({
         id: uid('toast'),
         kind: incident.severity === 'critical' ? 'error' : incident.severity === 'high' ? 'warning' : 'info',
-        title: `${incident.reference} · ${incident.severity}`,
+        title: `${incident.reference} Â· ${incident.severity}`,
         message: incident.title,
         atMs: nowMs,
       });
@@ -353,6 +519,10 @@ function advance(state: MineState, steps: number): Partial<MineState> {
     }
     toasts = toasts.slice(-4);
   }
+
+  const alertsEval = evaluateAlertRules(state, world, nowMs);
+  toasts = alertsEval.toasts;
+  const alertEvents = alertsEval.alertEvents;
 
   const shouldFrame =
     world.clock.elapsedSec - lastFrameSimSec >= FRAME_INTERVAL_SEC ||
@@ -383,6 +553,7 @@ function advance(state: MineState, steps: number): Partial<MineState> {
     runs: { ...state.runs, [state.activeScenarioId]: nextRun },
     toasts,
     activity,
+    alertEvents,
   };
 }
 
@@ -414,6 +585,19 @@ export const useMineStore = create<MineState>((set, get) => {
     replayIndex: 0,
     selection: { assetId: null, incidentId: null, sumpId: null },
     filters: { systems: [], statuses: [], levelIds: [], search: '' },
+    pilot: {
+      mode: 'synthetic' as const,
+      dataset: null as PilotDataset | null,
+      replayAtMs: null as number | null,
+      replayEndMs: null as number | null,
+      lastError: null as string | null,
+      gatewayUrl: null as string | null,
+      liveObservations: null as Record<string, { sensorId: string; epochMs: number; value: number; quality: number; unit: string }> | null,
+    },
+    alertRules: (typeof window !== 'undefined' ? (() => { try { return JSON.parse(localStorage.getItem('mineos.alertRules') || '[]') as AlertRule[]; } catch { return [] as AlertRule[]; } })() : [] as AlertRule[]),
+    alertEvents: [] as AlertEvent[],
+    operatingMode: (typeof window !== 'undefined' ? ((localStorage.getItem('mineos.operatingMode') as OperatingMode) || 'test') : 'test') as OperatingMode,
+    controlIntents: [] as ControlIntent[],
     toasts: [],
     comments: [
       {
@@ -465,6 +649,108 @@ export const useMineStore = create<MineState>((set, get) => {
       return frame ? frame.world : run.world;
     },
     can: (capability) => hasCapability(get().role, capability) && (!get().replayActive || capability.startsWith('view.') || capability === 'settings.role' || capability === 'report.export'),
+
+    // ------------------------------------------------------------- pilot MVP
+    loadPilotBundle: async (files) => {
+      try {
+        const dataset = await loadPilotDataset(files.config, files.telemetry);
+        const baseMine = MINE;
+        const mine = buildMineFromPilotConfig(dataset.config, baseMine);
+        const graph = new DependencyGraph(mine.dependencies, mine.assets.map(a => a.id));
+        const startMs = dataset.samples[0]?.epochMs ?? DEMO_EPOCH_MS;
+        const endMs = dataset.samples[dataset.samples.length - 1]?.epochMs ?? startMs;
+        const baseline = { ...createBaseline(startMs), name: `Pilot: ${dataset.config.site.name}`, description: dataset.config.site.description || 'Pilot replay scenario', isBaseline: false };
+        const scenarios = [baseline, ...buildLibrary(baseline, mine, startMs)];
+        const baseAssumptions = { ...DEFAULT_ASSUMPTIONS };
+        const runs: Record<ScenarioId, ScenarioRun> = {};
+        for (const scenario of scenarios) {
+          runs[scenario.id] = makeRun({ mine, graph, assumptions: mergeAssumptions(baseAssumptions, scenario.overrides.assumptions) }, scenario, mine);
+          // align epoch to dataset start
+          runs[scenario.id].world = { ...runs[scenario.id].world, clock: { ...runs[scenario.id].world.clock, epochMs: startMs, elapsedSec: 0 } };
+          runs[scenario.id].frames = [{ simSec: 0, atMs: startMs, world: { ...runs[scenario.id].world, history: [] }, incidents: [] }];
+        }
+        set({
+          mine, graph, baseAssumptions, demoEpochMs: startMs, scenarios, activeScenarioId: baseline.id, runs,
+          running: false, replayActive: false, replayIndex: 0,
+          pilot: { mode: 'pilot-replay' as const, dataset, replayAtMs: startMs, replayEndMs: endMs, lastError: null, gatewayUrl: null, liveObservations: null },
+          activity: [...get().activity, { id: uid('act'), atMs: Date.now(), atSimSec: 0, actor: get().actorName, role: roleName(get().role), kind: 'scenario' as const, summary: `Loaded pilot dataset: ${dataset.config.site.name} (${dataset.samples.length} samples)`, refs: [baseline.id] }].slice(-300),
+          toasts: [...get().toasts, { id: uid('toast'), kind: 'success' as const, title: 'Pilot dataset loaded', message: `${dataset.config.site.name}: ${dataset.samples.length} samples, ${dataset.config.sensors.length} mapped sensors.`, atMs: Date.now() }].slice(-4),
+        });
+        return { ok: true, message: 'Pilot dataset loaded.' };
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        set(s => ({ pilot: { ...s.pilot, lastError: msg }, toasts: [...s.toasts, { id: uid('toast'), kind: 'error' as const, title: 'Pilot load failed', message: msg, atMs: Date.now() }].slice(-4) }));
+        return { ok: false, message: msg };
+      }
+    },
+    unloadPilot: () => {
+      if (gatewayPoller) { clearInterval(gatewayPoller); gatewayPoller = null; }
+      gatewayAdapter = null;
+      const baseline = createBaseline(DEMO_EPOCH_MS);
+      const library = buildLibrary(baseline, MINE, DEMO_EPOCH_MS);
+      const scenarios = [baseline, ...library];
+      const runs: Record<ScenarioId, ScenarioRun> = {};
+      for (const scenario of scenarios) runs[scenario.id] = makeRun({ mine: MINE, graph: MINE_GRAPH, assumptions: DEFAULT_ASSUMPTIONS }, scenario, MINE);
+      set({ mine: MINE, graph: MINE_GRAPH, baseAssumptions: DEFAULT_ASSUMPTIONS, demoEpochMs: DEMO_EPOCH_MS, scenarios, activeScenarioId: baseline.id, runs, running: false, replayActive: false, replayIndex: 0, pilot: { mode: 'synthetic', dataset: null, replayAtMs: null, replayEndMs: null, lastError: null, gatewayUrl: null, liveObservations: null } });
+      return { ok: true, message: 'Returned to synthetic demo.' };
+    },
+    setPilotReplayTime: (epochMs) => set(s => ({ pilot: { ...s.pilot, replayAtMs: epochMs } })),
+
+    probeGateway: async (gatewayUrl) => {
+      try {
+        const url = GatewayHttpAdapter.normalizeUrl(gatewayUrl);
+        const adapter = new GatewayHttpAdapter({ gatewayUrl: url, mappings: get().pilot.dataset?.config.sensors ?? [] });
+        const result = await adapter.probe();
+        return { ok: result.ok, message: result.ok ? `Gateway reachable (${result.latencyMs}ms). ${result.sampleCount ?? 0} samples, ${(result.sensors?.length ?? 0)} sensors detected.` : (result.error || 'Probe failed'), details: result };
+      } catch (e) { const msg = e instanceof Error ? e.message : String(e); return { ok: false, message: msg }; }
+    },
+
+    connectGateway: async ({ gatewayUrl, config }) => {
+      try {
+        const url = GatewayHttpAdapter.normalizeUrl(gatewayUrl);
+        if (gatewayPoller) { clearInterval(gatewayPoller); gatewayPoller = null; }
+        const mappings = config?.sensors ?? get().pilot.dataset?.config.sensors ?? [];
+        gatewayAdapter = new GatewayHttpAdapter({ gatewayUrl: url, mappings, autoMap: mappings.length === 0 });
+        // Probe first for fast, clear feedback; auto-map from catalog if available
+        const probe = await gatewayAdapter.probe();
+        if (!probe.ok && !probe.sampleCount) throw new Error(probe.error || 'Unable to connect to gateway');
+        let mine = get().mine, graph = get().graph;
+        if (config) { mine = buildMineFromPilotConfig(config, MINE); graph = new DependencyGraph(mine.dependencies, mine.assets.map(a => a.id)); }
+        const ids = mine.sensors.map(s => s.id);
+        const apply = (samples: any[]) => {
+          const obs: Record<string, any> = {};
+          for (const s of samples) obs[s.sensorId] = s;
+          const state = get();
+          const scenario = state.getScenario();
+          const run = state.getRun();
+          const world = { ...run.world, observations: obs };
+          const derived = deriveState(contextFor({ ...state, mine, graph } as any, scenario), scenario, world);
+          const nextWorld = { ...world, sensors: derived.sensorStates, assets: derived.assetStates, pumps: derived.pumpStates, feeders: derived.feederStates, zones: derived.zoneStates, sumps: derived.sumpStates };
+          const nowMs = Date.now();
+          const alertsEval = evaluateAlertRules({ ...state, mine, graph } as MineState, nextWorld, nowMs);
+          appendHistory({ atMs: nowMs, simSec: nextWorld.clock.elapsedSec, mode: 'live-gateway', gatewayUrl: url, sampleCount: samples.length, sensorIds: samples.slice(0,20).map(s=>s.sensorId), values: samples.slice(0,20).map(s=>({id:s.sensorId,v:s.value,u:s.unit,q:s.quality})) });
+          set({ mine, graph, runs: { ...state.runs, [state.activeScenarioId]: { ...run, world: nextWorld } }, pilot: { ...state.pilot, mode: 'live-gateway', gatewayUrl: url, lastError: null, liveObservations: obs }, alertEvents: alertsEval.alertEvents, toasts: alertsEval.toasts });
+        };
+        // initial fetch
+        try { apply(await gatewayAdapter.getSamples(ids.length ? ids : [])); } catch (e) { /* will retry */ }
+        gatewayPoller = setInterval(async () => {
+          try { if (gatewayAdapter) apply(await gatewayAdapter.getSamples(get().mine.sensors.map(s=>s.id))); }
+          catch (e) { const msg = e instanceof Error ? e.message : String(e); set(s => ({ pilot: { ...s.pilot, lastError: msg } })); }
+        }, 5000);
+        set(s => ({ pilot: { ...s.pilot, mode: 'live-gateway' as const, gatewayUrl: url, lastError: null, liveObservations: s.pilot.liveObservations } }));
+        return { ok: true, message: `Connected to gateway ${url}${probe.sensors?.length ? ` Â· ${probe.sensors.length} sensors detected` : ''}` };
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        set(s => ({ pilot: { ...s.pilot, lastError: msg } }));
+        return { ok: false, message: msg };
+      }
+    },
+    disconnectGateway: () => {
+      if (gatewayPoller) { clearInterval(gatewayPoller); gatewayPoller = null; }
+      gatewayAdapter = null;
+      set(s => ({ pilot: { ...s.pilot, mode: s.pilot.dataset ? 'pilot-replay' : 'synthetic', gatewayUrl: null, liveObservations: null } }));
+      return { ok: true, message: 'Gateway disconnected.' };
+    },
 
     // ---------------------------------------------------------- simulation
     tick: (deltaMs) => {
@@ -745,7 +1031,7 @@ export const useMineStore = create<MineState>((set, get) => {
           state,
           status === 'failed' ? 'error' : 'success',
           `${feeder?.name ?? feederId}: ${status}`,
-          'Modelled state recalculated — pumps, sumps, production exposure and incidents all update from the same state.',
+          'Modelled state recalculated â€” pumps, sumps, production exposure and incidents all update from the same state.',
         ),
       });
       return { ok: true, message: `${feeder?.name ?? feederId} set to ${status}.` };
@@ -855,8 +1141,8 @@ export const useMineStore = create<MineState>((set, get) => {
       set({
         scenarios: state.scenarios.map((s) => (s.id === updated.id ? updated : s)),
         runs: { ...state.runs, [updated.id]: { ...run, world } },
-        activity: logActivity(state, 'action', `Sump ${sumpId} inflow multiplier set to ${multiplier.toFixed(2)}×.`, [sumpId]),
-        toasts: toast(state, 'info', 'Inflow changed', `Modelled inflow for ${sumpId} scaled by ${multiplier.toFixed(2)}×. Forecasts recalculated.`),
+        activity: logActivity(state, 'action', `Sump ${sumpId} inflow multiplier set to ${multiplier.toFixed(2)}Ã—.`, [sumpId]),
+        toasts: toast(state, 'info', 'Inflow changed', `Modelled inflow for ${sumpId} scaled by ${multiplier.toFixed(2)}Ã—. Forecasts recalculated.`),
       });
       return { ok: true, message: 'Inflow updated.' };
     },
@@ -1074,6 +1360,53 @@ export const useMineStore = create<MineState>((set, get) => {
     },
 
     dismissToast: (id) => set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) })),
+    upsertAlertRule: (rule) => set((s) => {
+      const existing = s.alertRules.findIndex(r => r.id === rule.id);
+      const next = [...s.alertRules];
+      if (existing >= 0) next[existing] = rule; else next.push(rule);
+      try { localStorage.setItem('mineos.alertRules', JSON.stringify(next)); } catch {}
+      return { alertRules: next };
+    }),
+    removeAlertRule: (id) => set((s) => { const next = s.alertRules.filter(r => r.id !== id); try { localStorage.setItem('mineos.alertRules', JSON.stringify(next)); } catch {} return { alertRules: next }; }),
+    acknowledgeAlert: (id) => set((s) => ({ alertEvents: s.alertEvents.map(e => e.id === id ? { ...e, acknowledged: true } : e) })),
+    clearAlerts: () => set({ alertEvents: [] }),
+
+    setOperatingMode: (mode) => {
+      try { localStorage.setItem('mineos.operatingMode', mode); } catch {}
+      const msg = mode === 'operational'
+        ? 'Operational mode enabled: authorized control intents may be dispatched to configured endpoints (audited). Use only with approved procedures.'
+        : 'Test/read-only mode enabled: external control dispatch is blocked; simulation/sandbox actions remain available for testing.';
+      set((s) => ({ operatingMode: mode, toasts: [...s.toasts, { id: uid('toast'), kind: (mode === 'operational' ? 'warning' : 'info') as ToastKind, title: 'Operating mode changed', message: msg, atMs: Date.now() }].slice(-4), activity: [...s.activity, { id: uid('act'), atMs: Date.now(), atSimSec: s.getRun().world.clock.elapsedSec, actor: s.actorName, role: roleName(s.role), kind: 'role' as const, summary: `Operating mode set to ${mode}`, refs: [] }].slice(-300) }));
+      return { ok: true, message: msg };
+    },
+
+    dispatchControlIntent: async (intent) => {
+      const s = get();
+      const base: ControlIntent = { id: uid('cmd'), atMs: Date.now(), actor: s.actorName, role: roleName(s.role), mode: s.operatingMode, target: intent.target, action: intent.action, payload: intent.payload, status: s.operatingMode === 'test' ? 'blocked-test-mode' : 'queued' };
+      if (s.operatingMode === 'test') {
+        const detail = 'Blocked: test/read-only mode. Switch to Operational mode to dispatch authorized control intents.';
+        const rec = { ...base, detail };
+        set(st => ({ controlIntents: [rec, ...st.controlIntents].slice(0, 200), toasts: [...st.toasts, { id: uid('toast'), kind: 'warning' as const, title: 'Control intent blocked', message: detail, atMs: Date.now() }].slice(-4) }));
+        return { ok: false, message: detail };
+      }
+      let status: ControlIntent['status'] = 'queued';
+      let detail = 'Operational intent recorded (audited).';
+      const gw = intent.gatewayUrl || s.pilot.gatewayUrl;
+      const path = intent.controlPath || '/control';
+      if (gw) {
+        try {
+          const url = `${String(gw).replace(/\/$/, '')}${path.startsWith('/') ? path : `/${path}`}`;
+          const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ target: intent.target, action: intent.action, payload: intent.payload ?? {}, actor: base.actor, role: base.role, atMs: base.atMs }) });
+          if (res.ok) { status = 'dispatched'; detail = `Dispatched to ${url}`; }
+          else { status = 'failed'; detail = `Gateway rejected (${res.status}) at ${url}`; }
+        } catch (e: any) {
+          status = 'failed'; detail = `Dispatch failed: ${e?.message || e}`;
+        }
+      }
+      const rec = { ...base, status, detail };
+      set(st => ({ controlIntents: [rec, ...st.controlIntents].slice(0, 200), toasts: [...st.toasts, { id: uid('toast'), kind: (status === 'dispatched' ? 'success' : status === 'failed' ? 'error' : 'info') as ToastKind, title: 'Control intent', message: detail, atMs: Date.now() }].slice(-4), activity: [...st.activity, { id: uid('act'), atMs: Date.now(), atSimSec: st.getRun().world.clock.elapsedSec, actor: st.actorName, role: roleName(st.role), kind: 'action' as const, summary: `Control intent ${status}: ${intent.action} ${intent.target}`, refs: [rec.id] }].slice(-300) }));
+      return { ok: status === 'dispatched' || status === 'queued', message: detail };
+    },
 
     // ------------------------------------------------------------------- ui
     setRole: (role) => {
@@ -1133,3 +1466,4 @@ export const mineStoreApi = {
 
 export type { MineState as MineStoreState };
 export { DEMO_EPOCH_MS, PERSONAS };
+

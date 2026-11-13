@@ -31,6 +31,10 @@ import type { UserRole } from '../domain/types';
 
 const SPEEDS = [1, 4, 16, 60];
 
+type AuthSession = { name: string; role: UserRole; signedInAt: number };
+const AUTH_KEY = 'mineos.auth';
+function loadAuth(): AuthSession | null { try { return JSON.parse(localStorage.getItem(AUTH_KEY) || 'null'); } catch { return null; } }
+
 export function AppShell() {
   const location = useLocation();
   const mine = useMineStore((s) => s.mine);
@@ -54,6 +58,23 @@ export function AppShell() {
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [scenarioOpen, setScenarioOpen] = useState(false);
+  const [auth, setAuth] = useState<AuthSession | null>(() => loadAuth());
+  const [loginName, setLoginName] = useState('');
+  const [loginRole, setLoginRole] = useState<UserRole>('dewatering-engineer');
+
+  useEffect(() => {
+    if (auth) {
+      setRole(auth.role);
+      useMineStore.setState({ actorName: auth.name || useMineStore.getState().actorName });
+    }
+  }, [auth, setRole]);
+
+  const signIn = () => {
+    const session: AuthSession = { name: loginName.trim() || 'Pilot Operator', role: loginRole, signedInAt: Date.now() };
+    try { localStorage.setItem(AUTH_KEY, JSON.stringify(session)); } catch {}
+    setAuth(session);
+  };
+  const signOut = () => { try { localStorage.removeItem(AUTH_KEY); } catch {} setAuth(null); };
 
   const activeModule = moduleByPath(location.pathname);
   const openIncidents = useMemo(
@@ -87,6 +108,22 @@ export function AppShell() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [setRunning]);
+
+  if (!auth) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-ink-950 p-4 text-ink-100">
+        <div className="w-full max-w-md rounded-[2px] border border-[color:var(--hairline)] bg-ink-900 p-4 shadow-lift">
+          <div className="mb-2 flex items-center gap-2"><span className="grid h-8 w-8 place-items-center rounded-[2px] border border-signal-cyan/40 bg-signal-cyan/10 font-mono text-[11px] font-semibold text-signal-cyanBright">MO</span><div><div className="font-mono text-[11px] uppercase tracking-[0.2em]">Mine OS Pilot Access</div><div className="text-[10px] text-ink-500">Local role-based sign-in (pilot ops). Not enterprise IAM.</div></div></div>
+          <div className="space-y-2">
+            <label className="block"><div className="mb-1 font-mono text-[9px] uppercase tracking-[0.1em] text-ink-500">Operator name</div><input value={loginName} onChange={e => setLoginName(e.target.value)} className="w-full rounded-[2px] border border-[color:var(--hairline)] bg-ink-950 px-2 py-1.5 text-[12px] text-ink-100" placeholder="e.g. A. Novak" /></label>
+            <label className="block"><div className="mb-1 font-mono text-[9px] uppercase tracking-[0.1em] text-ink-500">Role</div><select value={loginRole} onChange={e => setLoginRole(e.target.value as UserRole)} className="w-full rounded-[2px] border border-[color:var(--hairline)] bg-ink-950 px-2 py-1.5 text-[12px] text-ink-100">{ROLES.map(r => <option key={r.id} value={r.id}>{r.title}</option>)}</select></label>
+            <div className="flex gap-1.5 pt-1"><Button variant="primary" onClick={signIn}>Sign in</Button><NavLink to="/" className="inline-flex items-center rounded-[2px] border border-[color:var(--hairline)] px-2 py-1.5 font-mono text-[10px] text-ink-300 hover:text-ink-100">Back</NavLink></div>
+            <p className="text-[10px] text-ink-500">Session is stored locally for this browser. Core engine/calculations unchanged.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-ink-950 text-ink-100">
@@ -238,6 +275,7 @@ export function AppShell() {
             {inspectorOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
           </IconButton>
 
+          <Button size="sm" variant="ghost" onClick={signOut} title="Sign out (pilot auth)">Sign out</Button>
           <NavLink
             to="/"
             className="hidden items-center gap-1 rounded-[2px] px-1.5 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-ink-500 hover:text-ink-200 sm:flex"

@@ -1,6 +1,7 @@
 import {
   Activity,
   BarChart3,
+  BellRing,
   Boxes,
   ClipboardList,
   Factory,
@@ -8,6 +9,7 @@ import {
   Mountain,
   Network,
   Radio,
+  Settings2,
   ShieldCheck,
   Siren,
   TrendingUp,
@@ -19,11 +21,13 @@ import type { Capability } from '../domain/types';
 
 export type ModuleId =
   | 'engineering'
+  | 'engineering-config'
   | 'mission-control'
   | 'digital-twin'
   | 'dewatering'
   | 'impact'
   | 'incidents'
+  | 'alerts'
   | 'energy'
   | 'production'
   | 'scenarios'
@@ -50,6 +54,9 @@ export const MODULES: ModuleDefinition[] = [
   { id: 'engineering', path: '/app/engineering', label: 'Engineering Challenge & Resilience Lab', short: 'Engineering Lab',
     group: 'Engineering', icon: FlaskConical, capability: 'view.mission-control',
     description: 'Hydraulic curves, joint failures, traceable evidence, constrained recovery and engineering challenges.', product: 'core' },
+  { id: 'engineering-config', path: '/app/engineering-config', label: 'Engineering Configurations & Builds', short: 'Eng Config',
+    group: 'Engineering', icon: Settings2, capability: 'view.analytics',
+    description: 'Expert engineering profiles, operating envelopes, commissioning plans, and build/deployment configurations (config-driven).', product: 'core' },
   {
     id: 'mission-control',
     path: '/app',
@@ -103,6 +110,17 @@ export const MODULES: ModuleDefinition[] = [
     icon: Siren,
     capability: 'view.mission-control',
     description: 'Correlated incidents with evidence, hypotheses and audited workflow.',
+    product: 'core',
+  },
+  {
+    id: 'alerts',
+    path: '/app/alerts',
+    label: 'Alerts & Notifications',
+    short: 'Alerts',
+    group: 'Operate',
+    icon: BellRing,
+    capability: 'view.mission-control',
+    description: 'Configurable threshold, staleness and quality alerts over live, replay, and gateway data.',
     product: 'core',
   },
   {

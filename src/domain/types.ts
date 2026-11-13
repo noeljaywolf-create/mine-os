@@ -729,6 +729,8 @@ export interface WorldState {
   feeders: Record<FeederId, FeederRuntimeState>;
   zones: Record<ZoneId, ZoneRuntimeState>;
   sensors: Record<SensorId, SensorState>;
+  /** External/pilot observations at current clock, keyed by canonical sensor id (pluggable data source). */
+  observations?: Record<SensorId, TelemetrySample>;
   /** Rolling history for the charts (one entry per recorded step). */
   history: EngineEvent[];
   /** Simulation step counter. */

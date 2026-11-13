@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "profile": {
+    "id": "expert-commissioning-build-v1",
+    "name": "Expert Commissioning, QA & Build Profiles",
+    "revision": "A",
+    "status": "template"
+  },
+  "commissioningPlan": {
+    "phases": [
+      { "phase": "1-discovery", "objective": "Collect P&IDs, asset register, tag lists, network/protocol details, alarm philosophy", "exitCriteria": ["All critical assets/tags identified", "Read-only access path confirmed"] },
+      { "phase": "2-mapping", "objective": "Map source tags to canonical sensors/assets with units, scale, provenance", "exitCriteria": ["100% critical tag mapping", "Config validation passes"] },
+      { "phase": "3-connectivity", "objective": "Gateway/adapter connectivity and data quality verification", "exitCriteria": ["/health,/catalog,/samples/latest validated", "Latency/staleness within limits"] },
+      { "phase": "4-calibration-backtest", "objective": "Backtest/replay against historical data and known events", "exitCriteria": ["MAE/residuals reviewed", "Deviations explained and documented"] },
+      { "phase": "5-operational-readiness", "objective": "Alert rules, roles, reporting, and runbooks approved", "exitCriteria": ["Setpoints reviewed", "Pilot sign-off recorded"] }
+    ],
+    "raciTemplate": {
+      "dewateringEngineer": ["sump/pump envelopes", "water balance assumptions", "alarm setpoints"],
+      "electricalEngineer": ["power/generator mappings", "protection/limits inputs", "energy metrics"],
+      "controlRoomOperator": ["HMI/alert workflow validation", "operational procedures"],
+      "safetyOfficer": ["read-only posture", "alarm/response review"],
+      "mineManager": ["pilot acceptance", "cost assumptions"]
+    }
+  },
+  "buildProfiles": {
+    "dev": {
+      "purpose": "Local engineering/development",
+      "viteMode": "development",
+      "basePath": "/",
+      "dataMode": "synthetic+pilot+gateway",
+      "auth": "local-pilot",
+      "logging": "verbose",
+      "featureFlags": { "alerts": true, "profiles": true, "history": true, "reports": true }
+    },
+    "pilot": {
+      "purpose": "Site pilot / UAT (read-only)",
+      "viteMode": "production",
+      "basePath": "/",
+      "dataMode": "pilot-or-gateway",
+      "auth": "local-pilot-or-sso-ready",
+      "logging": "info",
+      "readOnlyEnforced": true,
+      "featureFlags": { "alerts": true, "profiles": true, "history": true, "reports": true }
+    },
+    "production-static": {
+      "purpose": "Static production build (CDN/server)",
+      "viteMode": "production",
+      "basePath": "/",
+      "artifact": "dist/",
+      "headersRecommended": ["CSP", "X-Content-Type-Options", "Referrer-Policy", "TLS"],
+      "notes": "Serve read-only UI; connect to approved read-only gateway endpoints only."
+    },
+    "github-pages": {
+      "purpose": "GitHub Pages deployment",
+      "viteMode": "production",
+      "basePath": "/mine-os/",
+      "command": "npm run build:pages",
+      "artifact": "docs/"
+    }
+  },
+  "configValidation": {
+    "rules": [
+      "All critical sensors must declare unit, scale, provenance, and staleness threshold",
+      "No duplicate sourceTag/sensorId mappings",
+      "Timestamps must be monotonic or flagged; quality in [0,1]",
+      "Connection profiles must be readOnly in pilot mode",
+      "Engineering setpoints must include basis and review status"
+    ]
+  }
+}

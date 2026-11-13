@@ -1,0 +1,111 @@
+{
+  "schemaVersion": 1,
+  "profile": {
+    "id": "expert-dewatering-v1",
+    "name": "Expert Dewatering Engineering Configuration",
+    "discipline": "dewatering",
+    "revision": "A",
+    "status": "template",
+    "basis": "Engineering template - replace all values with site-verified data before pilot/operations use.",
+    "preparedByRole": "Dewatering Engineer",
+    "reviewRequired": ["Mine Manager", "Electrical Engineer", "Safety Officer"]
+  },
+  "site": {
+    "id": "site-template",
+    "name": "Site Template",
+    "location": "",
+    "timezone": "UTC",
+    "unitsSystem": "SI"
+  },
+  "pilot": {
+    "label": "Expert dewatering config (advisory/read-only)",
+    "readOnly": true,
+    "notes": "Advisory configuration only. No automatic plant control. Validate against P&IDs, pump curves, sump surveys, protection settings, and operating procedures."
+  },
+  "sensors": [],
+  "connections": [],
+  "engineering": {
+    "designBasis": {
+      "designStormReturnPeriodYears": 10,
+      "peakInflowAllowanceFactor": 1.25,
+      "groundwaterInflowUncertaintyPct": 20,
+      "requiredDutyMarginPct": 15,
+      "minimumStandbyPumpsPerCriticalDuty": 1,
+      "maxAllowedSumpResidenceTimeMin": 120,
+      "calculationMethod": "Mass balance / system curve intersection (modelled, deterministic)"
+    },
+    "operatingEnvelopes": {
+      "sumps": [
+        {
+          "assetId": "smp-201",
+          "normalOperatingBandPct": [0.25, 0.7],
+          "highAlarmPct": 0.8,
+          "highHighTripAdvisoryPct": 0.9,
+          "lowAlarmPct": 0.15,
+          "lowLowNPSHProtectPct": 0.1,
+          "rateOfRiseAlarmMPerHr": 0.3,
+          "basis": "Template - set from surveyed volume, freeboard, pump NPSH, and overflow consequences"
+        }
+      ],
+      "pumps": [
+        {
+          "assetId": "pmp-201",
+          "preferredOperatingRangePctBEP": [70, 110],
+          "minContinuousFlowM3h": 30,
+          "maxContinuousFlowM3h": 220,
+          "maxStartsPerHour": 6,
+          "minRunTimeSec": 120,
+          "vibrationAlertMmS": 4.5,
+          "vibrationTripAdvisoryMmS": 7.1,
+          "bearingTempAlertC": 75,
+          "basis": "Template - align to OEM curve, motor thermal limits, and site duty"
+        }
+      ],
+      "pipelines": [
+        {
+          "assetId": "pipe-main-1",
+          "maxVelocityMS": 3.0,
+          "minScouringVelocityMS": 0.7,
+          "maxPressureKPa": 1600,
+          "basis": "Template - confirm material class, wear allowance, and surge limits"
+        }
+      ]
+    },
+    "alertSetpoints": {
+      "sensorStaleSec": { "warning": 300, "critical": 900 },
+      "sensorQualityMin": { "warning": 0.7, "critical": 0.4 },
+      "commsLatencyMs": { "warning": 5000, "critical": 15000 },
+      "powerSupplyDeviationPct": { "warning": 10, "critical": 20 },
+      "notes": "Use to generate platform alert rules; verify against site alarm philosophy and cause/effect."
+    },
+    "commissioning": {
+      "requiredChecks": [
+        "Verify sensor tag mapping, scaling, units, and timestamp source",
+        "Validate sump level survey/volume curve against as-built",
+        "Confirm pump curve, efficiency, and motor nameplate inputs",
+        "Backtest against historical period with known events",
+        "Review alarm setpoints with operations and safety",
+        "Document provenance (measured/estimated/synthetic) for every critical input"
+      ],
+      "acceptanceCriteria": {
+        "mappingCoveragePct": 100,
+        "backtestMAEWithinEngineeringTolerance": true,
+        "noUnprovenancedCriticalInputs": true
+      }
+    },
+    "dataQuality": {
+      "rejectIfQualityBelow": 0.0,
+      "flagIfQualityBelow": 0.7,
+      "maxFlatlineSamples": 20,
+      "maxRateOfChangePerSample": null,
+      "requireMonotonicTimestamps": true,
+      "onMissingData": "reduce-confidence"
+    }
+  },
+  "assumptions": {
+    "inflowUncertaintyPct": 20,
+    "rainfallScenarioMultiplier": 1.0,
+    "sensorConfidenceDiscount": 0.35,
+    "restartRampHours": 0.75
+  }
+}

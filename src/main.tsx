@@ -15,6 +15,7 @@ import { DigitalTwin } from './modules/DigitalTwin';
 import { Dewatering } from './modules/Dewatering';
 import { MineImpact } from './modules/MineImpact';
 import { Incidents } from './modules/Incidents';
+import { Alerts } from './modules/Alerts';
 import { Energy } from './modules/Energy';
 import { Production } from './modules/Production';
 import { Scenarios } from './modules/Scenarios';
@@ -25,6 +26,7 @@ import { Decisions } from './modules/Decisions';
 import { Analytics } from './modules/Analytics';
 import { Governance } from './modules/Governance';
 import { EngineeringLab } from './modules/EngineeringLab';
+import { EngineeringConfig } from './modules/EngineeringConfig';
 import { EngineeringErrorBoundary } from './components/EngineeringErrorBoundary';
 
 function Root() {
@@ -41,6 +43,7 @@ function Root() {
           <Route path="dewatering" element={<Dewatering />} />
           <Route path="impact" element={<MineImpact />} />
           <Route path="incidents" element={<Incidents />} />
+          <Route path="alerts" element={<Alerts />} />
           <Route path="energy" element={<Energy />} />
           <Route path="production" element={<Production />} />
           <Route path="scenarios" element={<Scenarios />} />
@@ -51,6 +54,7 @@ function Root() {
           <Route path="analytics" element={<Analytics />} />
           <Route path="governance" element={<Governance />} />
           <Route path="engineering" element={<EngineeringLab />} />
+          <Route path="engineering-config" element={<EngineeringConfig />} />
           <Route path="*" element={<Navigate to="/app" replace />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

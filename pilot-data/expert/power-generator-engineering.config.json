@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "profile": {
+    "id": "expert-power-generator-v1",
+    "name": "Expert Power & Generator/Monitor Engineering Configuration",
+    "discipline": "electrical-power",
+    "revision": "A",
+    "status": "template",
+    "basis": "Device-agnostic template for any inverter/generator/energy monitor. Map exposed points via gateway/config only (no core hardcoding).",
+    "preparedByRole": "Electrical Engineer",
+    "reviewRequired": ["Mine Manager", "Dewatering Engineer", "Safety Officer"]
+  },
+  "site": { "id": "site-template", "name": "Site Template", "location": "", "timezone": "UTC", "unitsSystem": "SI" },
+  "pilot": { "label": "Expert power config (advisory/read-only)", "readOnly": true, "notes": "Connect monitors through a read-only gateway. Record only measured signals; derive cost/energy from configured inputs." },
+  "sensors": [
+    { "sourceTag": "GEN1_ACTIVE_POWER_KW", "sensorId": "gen-1-power", "assetId": "gen-1", "kind": "power", "unit": "kW", "scale": 1, "stalenessThresholdSec": 60, "samplePeriodSec": 10, "accuracyPct": 1.0, "provenance": "measured" },
+    { "sourceTag": "GEN1_FUEL_RATE_LPH", "sensorId": "gen-1-fuel-rate", "assetId": "gen-1", "kind": "flow", "unit": "m3/h", "scale": 0.001, "stalenessThresholdSec": 120, "samplePeriodSec": 60, "accuracyPct": 2.0, "provenance": "measured" }
+  ],
+  "connections": [
+    { "id": "monitor-gateway", "name": "Generator/Inverter monitor via gateway (device-agnostic)", "type": "gateway", "enabled": false, "readOnly": true, "gatewayUrl": "http://GATEWAY_IP:8080", "protocol": "http-poll", "pollIntervalMs": 5000, "notes": "Gateway connects to monitor by its protocol (Modbus TCP/RTU, OPC UA, MQTT, REST, etc.). MINE OS reads canonical samples only." }
+  ],
+  "engineering": {
+    "designBasis": {
+      "supplyVoltageNominalV": 400,
+      "frequencyNominalHz": 50,
+      "powerFactorAssumed": 0.85,
+      "requiredSpinningReservePct": 20,
+      "loadStepLimitPct": 25,
+      "notes": "Template electrical basis - replace with site/genset/inverter nameplate and protection study values."
+    },
+    "operatingEnvelopes": {
+      "generators": [
+        {
+          "assetId": "gen-1",
+          "ratedPowerKw": 500,
+          "preferredLoadBandPct": [30, 80],
+          "overloadAlarmPct": 90,
+          "overloadTripAdvisoryPct": 100,
+          "minStableLoadPct": 20,
+          "fuelTankCapacityL": 2000,
+          "lowFuelAlarmPct": 20,
+          "criticalFuelAlarmPct": 10,
+          "basis": "Template - set from actual monitor/nameplate; wet-stacking/derating per OEM"
+        }
+      ],
+      "invertersDrives": [
+        {
+          "assetId": "inv-1",
+          "ratedPowerKw": 110,
+          "maxCurrentA": 210,
+          "thermalAlarmPct": 85,
+          "dcBusNominalV": 650,
+          "basis": "Template - VFD/inverter envelope; map actual drive points via gateway"
+        }
+      ]
+    },
+    "derivedMetrics": {
+      "energyKwh": { "method": "integrate_power_over_time", "requires": ["power_kw_timeseries"], "unit": "kWh" },
+      "fuelConsumed": { "method": "integrate_rate_or_counter_delta", "requires": ["fuel_rate_or_total_measured"], "unit": "L", "notes": "Only if monitor exposes fuel rate/total or calibrated level" },
+      "fuelCost": { "method": "fuel_consumed_x_price", "requires": ["fuel_consumed", "fuel_price_per_unit"], "unit": "USD", "notes": "Calculated, not measured; provide price assumption in config" },
+      "specificFuelConsumption": { "method": "fuel_per_kwh", "requires": ["fuel_consumed", "energy_kwh"], "unit": "L/kWh" }
+    },
+    "costAssumptions": {
+      "fuelPricePerLiter": 1.25,
+      "currency": "USD",
+      "energyTariffUSDPerKwh": 0.14,
+      "provenance": "assumed-template"
+    },
+    "alertSetpoints": {
+      "outputPowerKw": { "warningHighPctRated": 90, "criticalHighPctRated": 100 },
+      "fuelLevelPct": { "warningLow": 20, "criticalLow": 10 },
+      "sensorStaleSec": { "warning": 120, "critical": 600 },
+      "sensorQualityMin": { "warning": 0.7, "critical": 0.4 }
+    },
+    "commissioning": {
+      "requiredChecks": [
+        "Confirm monitor protocol, IP/endpoint, and point list (read-only)",
+        "Validate scaling/units for power, energy, fuel, runtime",
+        "Verify timestamps and quality flags",
+        "Cross-check kWh/fuel totals against monitor display for a known interval",
+        "Document provenance and price assumptions for cost metrics"
+      ]
+    },
+    "dataQuality": { "flagIfQualityBelow": 0.7, "maxFlatlineSamples": 30, "requireMonotonicTimestamps": true, "onMissingData": "reduce-confidence" }
+  },
+  "assumptions": { "energyTariffUSDPerKwh": 0.14 }
+}

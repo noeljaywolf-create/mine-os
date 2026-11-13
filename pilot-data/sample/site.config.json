@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "site": {
+    "id": "pilot-site-001",
+    "name": "Pilot Mine Site (Template)",
+    "location": "Replace with site location",
+    "description": "Template config for importing historical pilot telemetry into MINE OS.",
+    "timezone": "UTC"
+  },
+  "pilot": {
+    "label": "Pilot replay (template)",
+    "readOnly": true,
+    "notes": "Replace sensor mappings and mine geometry with site-specific measured/estimated values. Provenance must be declared."
+  },
+  "sensors": [
+    {
+      "sourceTag": "LT_2010_LEVEL",
+      "sensorId": "sen-l-201",
+      "assetId": "smp-201",
+      "kind": "level",
+      "unit": "m",
+      "scale": 1,
+      "stalenessThresholdSec": 300,
+      "samplePeriodSec": 60,
+      "accuracyPct": 1.0,
+      "provenance": "measured"
+    },
+    {
+      "sourceTag": "FT_2010_FLOW",
+      "sensorId": "sen-f-201",
+      "assetId": "pmp-201",
+      "kind": "flow",
+      "unit": "m3/h",
+      "scale": 1,
+      "stalenessThresholdSec": 300,
+      "samplePeriodSec": 60,
+      "accuracyPct": 1.5,
+      "provenance": "measured"
+    }
+  ],
+  "connections": [
+    {
+      "id": "site-gateway",
+      "name": "On-site read-only gateway (example)",
+      "type": "gateway",
+      "enabled": false,
+      "readOnly": true,
+      "gatewayUrl": "https://10.0.0.50:8443",
+      "protocol": "http-poll",
+      "pollIntervalMs": 5000,
+      "tags": ["LT_2010_LEVEL", "FT_2010_FLOW"]
+    },
+    {
+      "id": "historian-api",
+      "name": "Historian REST API (example)",
+      "type": "rest-api",
+      "enabled": false,
+      "readOnly": true,
+      "baseUrl": "https://10.0.0.20:9443",
+      "samplesPath": "/samples/latest",
+      "auth": { "type": "bearer", "secretRef": "HISTORIAN_TOKEN_REF" },
+      "tags": ["LT_2010_LEVEL"]
+    }
+  ],
+  "mine": {
+    "note": "MVP: provide mine definition overrides or reference a base template. Map to src/domain/mine MineDefinition."
+  },
+  "assumptions": {
+    "rainfallScenarioMultiplier": 1.0
+  }
+}

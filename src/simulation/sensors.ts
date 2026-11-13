@@ -82,11 +82,22 @@ export function computeSensorStates(
 ): Record<SensorId, SensorState> {
   const result: Record<SensorId, SensorState> = {};
   for (const sensor of mine.sensors) {
+    const observed = world.observations?.[sensor.id];
     const state = computeSensorFreshness(sensor, world.clock.elapsedSec, overrides);
     const fault = overrides.engineering?.telemetryFaults?.[sensor.id] ?? 'normal';
     const truth = readSensorValue(mine, world, sensor);
     const previous = world.sensors[sensor.id];
     state.lastValue = state.freshness === 'unavailable' ? null : truth;
+    // Pilot/external observation plug: prefer real measurement when provided.
+    if (observed) {
+      const ageSec = Math.max(0, (world.clock.epochMs + world.clock.elapsedSec * 1000 - observed.epochMs) / 1000);
+      state.ageSec = ageSec;
+      state.freshness = ageSec > sensor.stalenessThresholdSec * 3 ? 'expired' : ageSec > sensor.stalenessThresholdSec ? 'stale' : 'live';
+      state.lastValue = Number.isFinite(observed.value) ? observed.value : null;
+      state.confidence = Math.max(0, Math.min(1, (observed.quality ?? 1) * (1 - sensor.accuracyPct / 200))) * (state.freshness === 'live' ? 1 : state.freshness === 'stale' ? 0.5 : 0.1);
+      state.note = `Observed measurement (${observed.unit}) at ${new Date(observed.epochMs).toISOString()}; age ${Math.round(ageSec)} s.`;
+      if (state.lastValue === null) { state.freshness = 'unavailable'; state.confidence = 0; }
+    }
     if (fault === 'missing') {
       state.lastValue = null; state.freshness = 'unavailable'; state.confidence = 0;
       state.note = 'Simulated missing measurement. Physical model continues; no observation is substituted.';
