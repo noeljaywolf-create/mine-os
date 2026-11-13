@@ -54,6 +54,8 @@ export function AppShell() {
   const incidents = useIncidents();
   const clock = useSimClock();
   const capabilities = useCapabilities();
+  const operatingMode = useMineStore((s) => s.operatingMode);
+  const pilot = useMineStore((s) => s.pilot);
 
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
@@ -152,14 +154,16 @@ export function AppShell() {
           <div className="font-mono text-[9px] uppercase tracking-[0.16em] text-ink-500">
             {activeModule.group} / {activeModule.label}
           </div>
-          <div className="mt-0.5 flex items-center gap-1.5 font-mono text-[9.5px] text-ink-400">
+          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 font-mono text-[9.5px] text-ink-400">
             <span>{formatTimestamp(clock.atMs)}</span>
             <span className="text-ink-600">·</span>
             <span>T+{clock.elapsedSec < 3600 ? `${Math.floor(clock.elapsedSec / 60)}m` : `${(clock.elapsedSec / 3600).toFixed(2)}h`}</span>
             <span className="text-ink-600">·</span>
-            <span className={running ? 'text-signal-green' : 'text-ink-500'}>
-              {running ? `${speed}× simulation` : 'simulation paused'}
-            </span>
+            <span className={running ? 'text-signal-green' : 'text-ink-500'}>{running ? `${speed}× simulation` : 'simulation paused'}</span>
+            <span className="text-ink-600">·</span>
+            <span className={operatingMode === 'operational' ? 'text-signal-amber' : 'text-signal-green'}>{operatingMode === 'operational' ? 'operational' : 'test/read-only'}</span>
+            <span className="text-ink-600">·</span>
+            <span className="max-w-[220px] truncate" title={pilot.mode === 'live-gateway' ? (pilot.gatewayUrl || 'live gateway') : pilot.mode}>{pilot.mode === 'live-gateway' ? 'live gateway' : pilot.mode === 'pilot-replay' ? 'pilot replay' : 'synthetic'}</span>
           </div>
         </div>
 

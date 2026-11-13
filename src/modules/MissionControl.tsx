@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Droplets, Play, Zap } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CheckCircle2, Clock, Droplets, Gauge, Play, ShieldAlert, Zap } from 'lucide-react';
 import { MODULE_BY_ID } from '../app/modules';
 import { ModuleHeader, PanelTitle } from '../components/ModuleHeader';
 import { DependencyGraph } from '../components/DependencyGraph';
@@ -8,9 +8,11 @@ import { OperationsDesk } from '../components/OperationsDesk';
 import {
   Badge,
   Button,
+  KeyValue,
   Metric,
   MetricCell,
   MetricGrid,
+  Notice,
   Panel,
   Progress,
   SeverityBadge,
@@ -36,6 +38,9 @@ export function MissionControl() {
   const runFor = useMineStore((s) => s.runForAsync);
   const selectAsset = useMineStore((s) => s.selectAsset);
   const running = useMineStore((s) => s.running);
+  const pilot = useMineStore((s) => s.pilot);
+  const operatingMode = useMineStore((s) => s.operatingMode);
+  const alertEvents = useMineStore((s) => s.alertEvents);
 
   const waterRows = analytics.waterBalance;
   const forecastsReady = Boolean(forecasts && mine.sumps.every(s => forecasts[s.id]?.points.length));
@@ -49,6 +54,33 @@ export function MissionControl() {
   const activeIncidents = incidents
     .filter((incident) => incident.state !== 'closed' && incident.state !== 'resolved')
     .sort((a, b) => ({ critical: 0, high: 1, medium: 2, low: 3 })[a.severity] - ({ critical: 0, high: 1, medium: 2, low: 3 })[b.severity]);
+  const activeAlerts = alertEvents.filter(a => !a.acknowledged);
+
+  const sensorStates = Object.values(derived.sensorStates || {});
+  const liveSensors = sensorStates.filter(s => s.freshness === 'live').length;
+  const degradedSensors = sensorStates.filter(s => s.freshness === 'stale' || s.freshness === 'expired' || s.freshness === 'unavailable').length;
+  const lowConfidence = sensorStates.filter(s => (s.confidence ?? 1) < 0.7).length;
+  const confidencePct = sensorStates.length ? Math.round((sensorStates.reduce((a, s) => a + (s.confidence ?? 0), 0) / sensorStates.length) * 100) : 0;
+  const dataQuality = degradedSensors === 0 && lowConfidence === 0 ? 'good' : degradedSensors < Math.max(1, sensorStates.length * 0.2) ? 'mixed' : 'degraded';
+
+  const exposureValue = analytics.zones.reduce((sum, zone) => sum + zone.lostValueUSD, 0);
+  const foregoneTonnes = analytics.zones.reduce((sum, zone) => sum + zone.lostTonnes, 0);
+  const netBalance = analytics.totalInflowM3h - analytics.totalOutflowM3h;
+
+  const actions = useMemo(() => {
+    const list: Array<{ label: string; to: string; tone: 'red' | 'amber' | 'blue' | 'green'; why: string }> = [];
+    if (worst?.timeToCriticalHours != null && worst.timeToCriticalHours < 6) list.push({ label: 'Review dewatering risk & pump capacity', to: '/app/dewatering', tone: 'red', why: `${worst.sumpName} critical in ~${formatDurationHours(worst.timeToCriticalHours)} (forecast, assumption-dependent).` });
+    if (powerAvailability < 0.95) list.push({ label: 'Check power/feeders and constraints', to: '/app/energy', tone: 'amber', why: `Power availability ${(powerAvailability * 100).toFixed(0)}% affecting pumping/operations.` });
+    if (activeIncidents.length > 0) list.push({ label: 'Triage active incidents', to: '/app/incidents', tone: activeIncidents.some(i => i.severity === 'critical') ? 'red' : 'amber', why: `${activeIncidents.length} active incident(s) with evidence/hypotheses.` });
+    if (activeAlerts.length > 0) list.push({ label: 'Acknowledge/review alerts', to: '/app/alerts', tone: 'amber', why: `${activeAlerts.length} unacknowledged alert event(s).` });
+    if (derived.plantRatio < 0.9) list.push({ label: 'Assess production exposure & recovery options', to: '/app/impact', tone: 'amber', why: `Plant at ${(derived.plantRatio * 100).toFixed(0)}% of design; review constrained interventions.` });
+    if (pilot.mode !== 'synthetic' && degradedSensors > 0) list.push({ label: 'Inspect data quality/sensor health', to: '/app/telemetry', tone: 'blue', why: `${degradedSensors} sensor(s) stale/expired/unavailable; confidence may be reduced.` });
+    if (list.length === 0) list.push({ label: 'Review scenarios and operating envelope', to: '/app/scenarios', tone: 'green', why: 'No immediate critical triggers detected; validate assumptions and readiness.' });
+    list.push({ label: 'Open calibration, backtest & evidence', to: '/app/engineering-config', tone: 'blue', why: 'Confirm provenance, expert setpoints, and model-vs-observed alignment before decisions.' });
+    return list.slice(0, 5);
+  }, [worst, powerAvailability, activeIncidents, activeAlerts.length, derived.plantRatio, pilot.mode, degradedSensors]);
+
+  const provenance = pilot.mode === 'live-gateway' ? `Live gateway${pilot.gatewayUrl ? ` (${pilot.gatewayUrl})` : ''}` : pilot.mode === 'pilot-replay' ? 'Pilot replay (historical)' : 'Synthetic baseline (modelled)';
 
   return (
     <div>
@@ -69,27 +101,56 @@ export function MissionControl() {
         }
       >
         <div className="flex flex-wrap items-center gap-1.5">
-          <Badge tone={running ? 'green' : 'neutral'} dot>
-            {running ? 'simulation running' : 'simulation paused'}
-          </Badge>
-          <Badge tone="neutral">step {run.world.clock.stepSec}s</Badge>
-          <Badge tone={activeIncidents.some((i) => i.severity === 'critical') ? 'red' : 'amber'}>
-            {activeIncidents.length} active incident{activeIncidents.length === 1 ? '' : 's'}
-          </Badge>
-          <span className="text-2xs text-ink-500">
-            Every number below is computed from the same engine state — no module-local mock data.
-          </span>
+          <Badge tone={running ? 'green' : 'neutral'} dot>{running ? 'simulation running' : 'simulation paused'}</Badge>
+          <Badge tone={operatingMode === 'operational' ? 'amber' : 'green'}>{operatingMode === 'operational' ? 'operational mode' : 'test / read-only'}</Badge>
+          <Badge tone={dataQuality === 'good' ? 'green' : dataQuality === 'mixed' ? 'amber' : 'red'}>data: {dataQuality}</Badge>
+          <Badge tone={activeIncidents.some((i) => i.severity === 'critical') ? 'red' : 'amber'}>{activeIncidents.length} active incident{activeIncidents.length === 1 ? '' : 's'}</Badge>
+          <span className="text-2xs text-ink-500">Single canonical state · provenance & confidence explicit · core calculations unchanged.</span>
         </div>
       </ModuleHeader>
 
-      <div className="my-4 rounded-lg border border-ink-700 bg-gradient-to-r from-ink-900 to-ink-850 px-4 py-4 sm:px-6 sm:py-5">
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-signal-cyanBright">Mine operations · simulation</p>
-        <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
-          <div><h2 className="text-xl font-semibold tracking-tight text-ink-50 sm:text-2xl">One clear view of the mine</h2>
-            <p className="mt-1 max-w-2xl text-sm leading-relaxed text-ink-300">See how water, power and production connect. Explore a scenario without affecting real equipment.</p></div>
-          <Link to="/app/scenarios" className="rounded-md border border-ink-600 px-3 py-2 text-xs font-medium text-ink-100 transition-colors hover:border-signal-cyan hover:text-signal-cyanBright">Explore scenarios →</Link>
-        </div>
+      <div className="my-3 grid gap-2 xl:grid-cols-[1.4fr_1fr]">
+        <Panel>
+          <PanelTitle right={<Badge tone={worst?.timeToCriticalHours != null && worst.timeToCriticalHours < 6 ? 'red' : 'green'} dot>{worst?.timeToCriticalHours != null ? `risk horizon ${formatDurationHours(worst.timeToCriticalHours)}` : 'no breach in window'}</Badge>}>Situation brief — what matters now</PanelTitle>
+          <div className="grid gap-2 p-2 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <div className="text-[11px] text-ink-300"><strong className="text-ink-100">Primary risk:</strong> {worst?.timeToCriticalHours != null ? `${worst.sumpName} approaching critical in ~${formatDurationHours(worst.timeToCriticalHours)} (modelled forecast).` : forecastsReady ? 'No sump breach projected within current forecast window.' : 'Forecast unavailable/loading; treat horizon as unknown.'}</div>
+              <div className="text-[11px] text-ink-300"><strong className="text-ink-100">Power → water → production:</strong> power {(powerAvailability * 100).toFixed(0)}%, net balance {formatFlow(netBalance)}, plant {(derived.plantRatio * 100).toFixed(0)}% of design.</div>
+              <div className="text-[11px] text-ink-300"><strong className="text-ink-100">Exposure (assumption-dependent):</strong> {formatMoney(exposureValue)} value at risk · {formatTonnes(foregoneTonnes)} t foregone · {formatMoney(analytics.energy.costUSD)} pumping energy cost ({analytics.energy.energyKwh.toFixed(0)} kWh).</div>
+            </div>
+            <div className="space-y-1 rounded-[2px] border border-[color:var(--hairline)] bg-ink-900/40 p-2 text-2xs">
+              <div className="label-micro mb-1">Trust & provenance</div>
+              <KeyValue label="Data source" value={provenance} mono={false} />
+              <KeyValue label="Confidence (avg)" value={`${confidencePct}%`} />
+              <KeyValue label="Sensors live/degraded" value={`${liveSensors}/${degradedSensors}`} />
+              <KeyValue label="Mode" value={operatingMode === 'operational' ? 'Operational (audited intents enabled)' : 'Test/read-only (safe validation)'} mono={false} />
+              <KeyValue label="Validation" value={pilot.mode === 'pilot-replay' || pilot.mode === 'live-gateway' ? 'Backtest/calibrate before decisions' : 'Synthetic demo — not field-validated'} mono={false} />
+            </div>
+          </div>
+        </Panel>
+
+        <Panel>
+          <PanelTitle right={<Gauge size={12} className="text-ink-500" />}>Recommended actions (prioritized)</PanelTitle>
+          <div className="divide-y divide-[color:var(--hairline)]">
+            {actions.map((a, i) => (
+              <Link key={i} to={a.to} className="flex items-start gap-2 px-3 py-2 hover:bg-ink-800/60">
+                {a.tone === 'red' ? <AlertTriangle size={13} className="mt-0.5 text-signal-red" /> : a.tone === 'green' ? <CheckCircle2 size={13} className="mt-0.5 text-signal-green" /> : a.tone === 'blue' ? <Clock size={13} className="mt-0.5 text-signal-cyanBright" /> : <ShieldAlert size={13} className="mt-0.5 text-signal-amber" />}
+                <div className="min-w-0">
+                  <div className="text-[11px] text-ink-100">{a.label} <ArrowRight size={10} className="inline text-ink-500" /></div>
+                  <div className="text-2xs leading-relaxed text-ink-500">{a.why}</div>
+                </div>
+              </Link>
+            ))}
+          </div>
+          <div className="border-t border-[color:var(--hairline)] px-3 py-1.5 text-[9.5px] text-ink-500">Actions are decision support based on current canonical state and assumptions; verify with site evidence and procedures.</div>
+        </Panel>
       </div>
+
+      <Notice tone={pilot.mode === 'synthetic' ? 'blue' : 'amber'} title={pilot.mode === 'synthetic' ? 'Synthetic demonstration' : 'Live/pilot data in use'}>
+        {pilot.mode === 'synthetic'
+          ? 'Values are computed from a synthetic mine model (deterministic). Use for training/what-if; do not treat as field measurements.'
+          : `Source: ${provenance}. Treat outputs as decision support pending calibration, backtesting, and engineering review. ${operatingMode === 'test' ? 'External control dispatch is blocked in Test mode.' : 'Operational mode: control intents may be dispatched if configured and authorized.'}`}
+      </Notice>
       <MetricGrid cols={5}>
         <MetricCell>
           <Metric
@@ -332,24 +393,27 @@ export function MissionControl() {
           </Panel>
 
           <Panel>
-            <PanelTitle>Two products, one engine</PanelTitle>
+            <PanelTitle>Focus areas (integrated view)</PanelTitle>
             <div className="space-y-2 px-3 py-2.5">
               <Link to="/app/dewatering" className="flex items-start gap-2 rounded-[2px] border border-signal-cyan/30 bg-signal-cyan/[0.06] px-2 py-2 hover:border-signal-cyan/60">
                 <Droplets size={14} className="mt-0.5 text-signal-cyanBright" />
                 <span>
-                  <span className="block text-[11.5px] text-ink-100">DeepWater Intelligence</span>
-                  <span className="mt-0.5 block text-[9.5px] leading-snug text-ink-400">
-                    Water inventory, forecast bands and pump capability.
-                  </span>
+                  <span className="block text-[11.5px] text-ink-100">Water & dewatering risk</span>
+                  <span className="mt-0.5 block text-[9.5px] leading-snug text-ink-400">Levels, inflow/outflow balance, pump capability, forecast horizons.</span>
+                </span>
+              </Link>
+              <Link to="/app/energy" className="flex items-start gap-2 rounded-[2px] border border-[color:var(--hairline)] bg-ink-900/40 px-2 py-2 hover:border-ink-500">
+                <Zap size={14} className="mt-0.5 text-signal-amber" />
+                <span>
+                  <span className="block text-[11.5px] text-ink-100">Power & energy constraints</span>
+                  <span className="mt-0.5 block text-[9.5px] leading-snug text-ink-400">Supply availability, demand, and energy/cost context (measured/configured inputs).</span>
                 </span>
               </Link>
               <Link to="/app/impact" className="flex items-start gap-2 rounded-[2px] border border-signal-amber/30 bg-signal-amber/[0.06] px-2 py-2 hover:border-signal-amber/60">
-                <Zap size={14} className="mt-0.5 text-signal-amber" />
+                <AlertTriangle size={14} className="mt-0.5 text-signal-amber" />
                 <span>
-                  <span className="block text-[11.5px] text-ink-100">Mine Impact Intelligence</span>
-                  <span className="mt-0.5 block text-[9.5px] leading-snug text-ink-400">
-                    Tonnes, hours and value exposed by the same physical state.
-                  </span>
+                  <span className="block text-[11.5px] text-ink-100">Production impact & value</span>
+                  <span className="mt-0.5 block text-[9.5px] leading-snug text-ink-400">Tonnes/hours/value exposure from the same causal state and assumptions.</span>
                 </span>
               </Link>
             </div>
