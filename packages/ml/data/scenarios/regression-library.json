@@ -1,0 +1,10 @@
+{
+  "libraryVersion": "1.0.0",
+  "description": "Deterministic regression scenarios for shadow validation and change regression (Approach 1 & 6). Extend with site-known events.",
+  "scenarios": [
+    { "id": "scn-power-loss-dewatering", "archetype": "power-loss-dewatering", "title": "Power loss impacts dewatering", "tags": ["power", "dewatering", "cascade"] },
+    { "id": "scn-pump-no-flow", "archetype": "pump-degradation-failure", "title": "Pump running without effective flow", "tags": ["maintenance", "dewatering"] },
+    { "id": "scn-nominal", "archetype": "nominal", "title": "Nominal stable operation", "tags": ["nominal"] }
+  ],
+  "note": "Canonical executable definitions live in packages/ml/src/scenarios.ts (DEFAULT_SCENARIOS). This file indexes the library for ops/reporting."
+}

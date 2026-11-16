@@ -17,6 +17,7 @@ import {
 } from '../design-system';
 import { useAnalytics, useCapabilities } from '../store/hooks';
 import { useMineStore } from '../store/mineStore';
+import { COPYRIGHT_NOTICE, downloadCsv, downloadJson, openPrintReport } from '../utils/export';
 
 import {
   formatDurationHours,
@@ -47,13 +48,14 @@ export function Analytics() {
             <Badge tone={failures ? 'red' : okChecks === analytics.modelChecks.length ? 'green' : 'amber'} dot>
               {okChecks}/{analytics.modelChecks.length} model checks ok
             </Badge>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={!capabilities.can('report.export')}
-              onClick={() => exportBundle(analytics)}
-            >
-              <Download size={11} /> Export analytics
+            <Button size="sm" variant="outline" disabled={!capabilities.can('report.export')} onClick={() => exportAnalyticsJson(analytics, mine.name)}>
+              <Download size={11} /> JSON
+            </Button>
+            <Button size="sm" variant="outline" disabled={!capabilities.can('report.export')} onClick={() => exportAnalyticsCsv(analytics, mine.name)}>
+              <Download size={11} /> CSV (Excel)
+            </Button>
+            <Button size="sm" variant="outline" disabled={!capabilities.can('report.export')} onClick={() => exportAnalyticsPdf(analytics, mine)}>
+              <Download size={11} /> PDF
             </Button>
           </>
         }
@@ -294,18 +296,45 @@ export function Analytics() {
       </div>
 
       <div className="mt-2 text-2xs leading-relaxed text-ink-600">
-        {mine.name} · synthetic asset base · {mine.geometryDisclaimer}
+        {mine.name} · {mine.geometryDisclaimer} · {COPYRIGHT_NOTICE}
       </div>
     </div>
   );
 }
 
-function exportBundle(bundle: unknown) {
-  const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = 'kestrel-analytics-bundle.json';
-  link.click();
-  URL.revokeObjectURL(url);
+function exportAnalyticsJson(bundle: any, siteName: string) {
+  downloadJson(`mine-os-analytics-${siteName || 'site'}`, { exportedAt: new Date().toISOString(), site: siteName, analytics: bundle });
+}
+
+function exportAnalyticsCsv(bundle: any, siteName: string) {
+  const rows = (bundle?.waterBalance || []).map((r: any) => ({
+    section: 'water_balance', id: r.sumpId, name: r.sumpName, levelM: r.levelM, fillPct: r.fillPct, inflowM3h: r.inflowM3h, outflowM3h: r.outflowM3h, netM3h: +(r.inflowM3h - r.outflowM3h).toFixed(3), timeToCritical: r.timeToCritical ?? '', trend: r.trend ?? '',
+  }));
+  const pumpRows = (bundle?.pumpPerformance || []).map((r: any) => ({
+    section: 'pump_performance', id: r.pumpId, name: r.pumpName, sump: r.sumpName, feeder: r.feederName, mode: r.mode, powered: r.powered, flowM3h: r.flowM3h, powerKw: r.powerKw, specificEnergyKwhPerM3: r.specificEnergyKwhPerM3,
+  }));
+  const zoneRows = (bundle?.zones || []).map((z: any) => ({
+    section: 'production_exposure', id: z.zoneId, name: z.zoneName, designRateTph: z.designRateTph, rateTph: z.rateTph, operatingPct: z.operatingPct, lostHours: z.lostHours, lostTonnes: z.lostTonnes, lostValueUSD: z.lostValueUSD, constraint: z.constraint,
+  }));
+  downloadCsv(`mine-os-analytics-${siteName || 'site'}`, [...rows, ...pumpRows, ...zoneRows], undefined, { site: siteName, exportedAt: new Date().toISOString() });
+}
+
+function exportAnalyticsPdf(bundle: any, mine: any) {
+  const water = (bundle?.waterBalance || []).map((r: any) => ({ Sump: r.sumpName, 'Level (m)': r.levelM, 'Fill (%)': r.fillPct, 'Inflow (m³/h)': r.inflowM3h, 'Outflow (m³/h)': r.outflowM3h, 'Net (m³/h)': +(r.inflowM3h - r.outflowM3h).toFixed(2), 'To critical': r.timeToCritical ?? '—', Trend: r.trend ?? '' }));
+  const pumps = (bundle?.pumpPerformance || []).map((r: any) => ({ Pump: r.pumpName, Sump: r.sumpName, Feeder: r.feederName, Mode: r.mode, 'Flow (m³/h)': r.flowM3h, 'Power (kW)': r.powerKw, 'kWh/m³': r.specificEnergyKwhPerM3 }));
+  const zones = (bundle?.zones || []).map((z: any) => ({ Zone: z.zoneName, 'Design (tph)': z.designRateTph, 'Rate (tph)': z.rateTph, 'Operating (%)': z.operatingPct, 'Foregone (t)': z.lostTonnes, 'Value (USD)': z.lostValueUSD, Constraint: z.constraint }));
+  openPrintReport({
+    title: 'MINE OS — Analytics Report',
+    subtitle: `${mine?.name ?? ''}`,
+    meta: [
+      { label: 'Site', value: mine?.name }, { label: 'Simulated hours', value: bundle?.elapsedHours?.toFixed?.(2) },
+      { label: 'Total inflow (m³/h)', value: bundle?.totalInflowM3h }, { label: 'Total outflow (m³/h)', value: bundle?.totalOutflowM3h },
+      { label: 'Running power (kW)', value: bundle?.energy?.runningPowerKw }, { label: 'Energy cost (USD)', value: bundle?.energy?.costUSD },
+    ],
+    sections: [
+      { title: 'Water balance', table: { columns: ['Sump','Level (m)','Fill (%)','Inflow (m³/h)','Outflow (m³/h)','Net (m³/h)','To critical','Trend'], rows: water } },
+      { title: 'Pump performance', table: { columns: ['Pump','Sump','Feeder','Mode','Flow (m³/h)','Power (kW)','kWh/m³'], rows: pumps } },
+      { title: 'Production exposure', table: { columns: ['Zone','Design (tph)','Rate (tph)','Operating (%)','Foregone (t)','Value (USD)','Constraint'], rows: zones } },
+    ],
+  });
 }

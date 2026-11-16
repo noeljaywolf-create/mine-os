@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Activity, Cable, CircleSlash, Download, Radio, Save, ShieldQuestion, Trash2, Upload } from 'lucide-react';
 import { MODULE_BY_ID } from '../app/modules';
 import { ModuleHeader, PanelTitle } from '../components/ModuleHeader';
+import { COPYRIGHT_NOTICE, downloadCsv, downloadJson, openPrintReport } from '../utils/export';
 import {
   Badge,
   Button,
@@ -33,14 +34,6 @@ const CONNECTORS = [
   { id: 'control', name: 'Control / recovery write-back', direction: 'write', status: 'blocked by policy', contract: 'Not implemented. Pilot MVP is read-only; no plant commands.', requirement: 'Separate safety case, approvals, and hardened integration. Out of scope.' },
 ] as const;
 
-function downloadJson(name: string, data: unknown) {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = name; a.click();
-  URL.revokeObjectURL(url);
-}
-
 export function Telemetry() {
   const mine = useMineStore((s) => s.mine);
   const derived = useDerived();
@@ -55,6 +48,8 @@ export function Telemetry() {
   const connectGateway = useMineStore((s) => s.connectGateway);
   const disconnectGateway = useMineStore((s) => s.disconnectGateway);
   const probeGateway = useMineStore((s) => s.probeGateway);
+  const demoDataEnabled = useMineStore((s) => s.demoDataEnabled);
+  const setDemoDataEnabled = useMineStore((s) => s.setDemoDataEnabled);
   const [gatewayUrl, setGatewayUrl] = useState(() => { try { return localStorage.getItem('mineos.lastGateway') || ''; } catch { return ''; } });
   const [probeResult, setProbeResult] = useState<{ ok: boolean; message: string; details?: any } | null>(null);
   const [probing, setProbing] = useState(false);
@@ -118,7 +113,7 @@ export function Telemetry() {
   };
 
   const exportEvidence = () => {
-    downloadJson(`mine-os-pilot-evidence-${Date.now()}.json`, {
+    downloadJson('mine-os-pilot-evidence', {
       exportedAt: new Date().toISOString(),
       mode: pilot.mode,
       site: { id: mine.id, name: mine.name },
@@ -139,13 +134,14 @@ export function Telemetry() {
   const exportHistory = () => {
     let history: any[] = [];
     try { history = JSON.parse(localStorage.getItem('mineos.history') || '[]'); } catch {}
-    downloadJson(`mine-os-history-${Date.now()}.json`, { exportedAt: new Date().toISOString(), count: history.length, history });
+    downloadJson('mine-os-history', { exportedAt: new Date().toISOString(), count: history.length, history });
   };
   const clearHistory = () => { try { localStorage.removeItem('mineos.history'); } catch {} };
-  const exportReport = () => {
+
+  const buildReport = () => {
     let history: any[] = [];
     try { history = JSON.parse(localStorage.getItem('mineos.history') || '[]'); } catch {}
-    const report = {
+    return {
       generatedAt: new Date().toISOString(),
       site: { id: mine.id, name: mine.name },
       mode: pilot.mode,
@@ -154,12 +150,54 @@ export function Telemetry() {
       clock: { epochMs: clock.epochMs, elapsedSec: clock.elapsedSec },
       kpis: { sensors: mine.sensors.length, live: sensors.filter(s => derived.sensorStates[s.id]?.freshness === 'live').length, stale: sensors.filter(s => ['stale','expired'].includes(derived.sensorStates[s.id]?.freshness ?? '')).length, incidents: incidents.length, alertsActive: alertEvents.filter(a=>!a.acknowledged).length, alertsTotal: alertEvents.length },
       incidents, alertEvents, alertRules, decisions,
-      sensors: mine.sensors.map(s => ({ id: s.id, name: s.name, assetId: s.assetId, unit: s.unit, state: derived.sensorStates[s.id] })),
+      sensors: mine.sensors.map(s => ({ id: s.id, name: s.name, assetId: s.assetId, kind: s.kind, unit: s.unit, state: derived.sensorStates[s.id] })),
       backtest: backtest ? { mae: backtest.mae, rows: backtest.rows } : null,
       historySummary: { count: history.length, firstAtMs: history[0]?.atMs ?? null, lastAtMs: history[history.length-1]?.atMs ?? null },
       notes: ['Read-only platform report. Core simulation/calculation engine unchanged.', 'Verify measurements, mappings, units, and calibration before operational decisions.'],
     };
-    downloadJson(`mine-os-report-${Date.now()}.json`, report);
+  };
+
+  const exportReport = () => {
+    downloadJson('mine-os-report', buildReport());
+  };
+
+  const exportReportCsv = () => {
+    const report = buildReport() as any;
+    const rows = (report.sensors || []).map((s: any) => ({
+      sensorId: s.id,
+      name: s.name,
+      assetId: s.assetId,
+      kind: s.kind,
+      unit: s.unit,
+      freshness: s.state?.freshness ?? '',
+      lastValue: s.state?.lastValue ?? '',
+      ageSec: s.state?.ageSec ?? '',
+      confidence: s.state?.confidence ?? '',
+    }));
+    downloadCsv('mine-os-report-sensors', rows, ['sensorId','name','assetId','kind','unit','freshness','lastValue','ageSec','confidence'], {
+      site: report.site?.name, mode: report.mode, scenario: report.scenario?.name, generatedAt: report.generatedAt,
+    });
+  };
+
+  const exportReportPdf = () => {
+    const r = buildReport() as any;
+    const sensorRows = (r.sensors || []).map((s: any) => ({ Sensor: s.id, Name: s.name, Asset: s.assetId, Kind: s.kind, Unit: s.unit, Freshness: s.state?.freshness ?? '', Value: s.state?.lastValue ?? '', 'Age (s)': s.state?.ageSec ?? '', Confidence: s.state?.confidence ?? '' }));
+    const incidentRows = (r.incidents || []).slice(0, 50).map((i: any) => ({ Id: i.id ?? '', Type: i.type ?? i.kind ?? '', Severity: i.severity ?? '', State: i.state ?? i.status ?? '', Summary: i.summary ?? i.title ?? i.message ?? '' }));
+    openPrintReport({
+      title: 'MINE OS — Telemetry & Operations Report',
+      subtitle: `${r.site?.name ?? mine.name} · ${r.scenario?.name ?? ''}`,
+      meta: [
+        { label: 'Site', value: r.site?.name }, { label: 'Site ID', value: r.site?.id }, { label: 'Mode', value: r.mode },
+        { label: 'Scenario', value: r.scenario?.name }, { label: 'Gateway', value: r.gatewayUrl || '—' }, { label: 'Generated', value: r.generatedAt },
+        { label: 'Sensors', value: r.kpis?.sensors }, { label: 'Live sensors', value: r.kpis?.live }, { label: 'Stale/expired', value: r.kpis?.stale },
+        { label: 'Incidents', value: r.kpis?.incidents }, { label: 'Active alerts', value: r.kpis?.alertsActive },
+      ],
+      sections: [
+        { title: 'Sensor status', table: { columns: ['Sensor','Name','Asset','Kind','Unit','Freshness','Value','Age (s)','Confidence'], rows: sensorRows } },
+        { title: 'Incidents (recent)', table: { columns: ['Id','Type','Severity','State','Summary'], rows: incidentRows } },
+        { title: 'Notes', pre: (r.notes || []).join('\n') },
+      ],
+    });
   };
 
   const onLoad = async () => {
@@ -174,8 +212,10 @@ export function Telemetry() {
       <ModuleHeader
         module={MODULE_BY_ID.telemetry}
         actions={
-          <div className="flex gap-1.5">
-            <Button size="sm" variant="outline" onClick={exportEvidence}><Download size={11} /> Export evidence</Button>
+          <div className="flex flex-wrap gap-1.5">
+            <Button size="sm" variant="outline" onClick={exportEvidence}><Download size={11} /> Evidence (JSON)</Button>
+            <Button size="sm" variant="outline" onClick={exportReportCsv}><Download size={11} /> Export CSV (Excel)</Button>
+            <Button size="sm" variant="outline" onClick={exportReportPdf}><Download size={11} /> Export PDF</Button>
             <Button size="sm" variant="outline" onClick={() => setShowContract((v) => !v)}><Cable size={11} /> {showContract ? 'Hide' : 'Show'} contract</Button>
           </div>
         }
@@ -187,7 +227,7 @@ export function Telemetry() {
             </Badge>
           ))}
           <span className="ml-auto font-mono text-[9px] uppercase tracking-[0.12em] text-ink-500">
-            {pilot.mode === 'pilot-replay' ? 'pilot replay (read-only)' : pilot.mode === 'live-gateway' ? 'live gateway (read-only)' : 'synthetic simulation'}
+            {pilot.mode === 'pilot-replay' ? 'pilot replay (read-only)' : pilot.mode === 'live-gateway' ? 'live gateway (read-only)' : pilot.mode === 'empty' ? 'no data loaded' : 'synthetic demo'}
           </span>
         </div>
       </ModuleHeader>
@@ -313,8 +353,21 @@ export function Telemetry() {
                   )}
                 </div>
               </div>
-              <div className="flex flex-wrap gap-1.5 border-t border-[color:var(--hairline)] pt-2">
-                {(pilot.mode === 'pilot-replay' || pilot.mode === 'live-gateway' || pilot.dataset) && <Button size="sm" variant="outline" onClick={() => { unloadPilot(); setConfigFile(null); setTelemetryFile(null); setGatewayUrl(''); if(cfgRef.current) cfgRef.current.value=''; if(telRef.current) telRef.current.value=''; }}>Reset to synthetic</Button>}
+              <div className="space-y-2 border-t border-[color:var(--hairline)] pt-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <div className="font-mono text-[9px] uppercase tracking-[0.1em] text-ink-500">Synthetic demo data</div>
+                    <div className="text-[10px] text-ink-400">{demoDataEnabled ? 'Demo mine & scenario library available.' : 'Fake/demo data removed. Use pilot replay or live gateway.'}</div>
+                  </div>
+                  <Toggle checked={demoDataEnabled} onChange={(v) => setDemoDataEnabled(v)} label={demoDataEnabled ? 'On' : 'Off'} />
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {(pilot.mode === 'pilot-replay' || pilot.mode === 'live-gateway' || pilot.dataset || pilot.mode === 'empty' || !demoDataEnabled) && (
+                    <Button size="sm" variant="outline" onClick={() => { unloadPilot(); setConfigFile(null); setTelemetryFile(null); setGatewayUrl(''); setProbeResult(null); if(cfgRef.current) cfgRef.current.value=''; if(telRef.current) telRef.current.value=''; }}>
+                      {demoDataEnabled ? 'Reset to synthetic demo' : 'Clear to empty state'}
+                    </Button>
+                  )}
+                </div>
               </div>
               {pilot.lastError && <div className="text-signal-red">{pilot.lastError}</div>}
               {pilot.dataset && <div className="font-mono text-[9px] text-ink-500">Loaded: {pilot.dataset.sourceFiles.join(', ')} · {pilot.dataset.samples.length} samples</div>}
@@ -368,12 +421,15 @@ export function Telemetry() {
           <Panel>
             <PanelTitle right={<Download size={11} className="text-ink-500" />}>Recording, history & reports</PanelTitle>
             <div className="space-y-2 px-3 py-2 text-2xs text-ink-400">
-              <p>Durable local recording (capped) for gateway/live observations and one-click pilot reports. Core calculations unchanged.</p>
+              <p>Durable local recording (capped) for gateway/live observations and one-click reports. Exports include copyright. Core calculations unchanged.</p>
               <div className="flex flex-wrap gap-1.5">
-                <Button size="sm" variant="outline" onClick={exportHistory}>Export history (JSON)</Button>
+                <Button size="sm" variant="outline" onClick={exportHistory}>History (JSON)</Button>
                 <Button size="sm" variant="outline" onClick={clearHistory}>Clear local history</Button>
-                <Button size="sm" variant="primary" onClick={exportReport}>Export report bundle</Button>
+                <Button size="sm" variant="outline" onClick={exportReport}>Report (JSON)</Button>
+                <Button size="sm" variant="outline" onClick={exportReportCsv}>Report CSV (Excel)</Button>
+                <Button size="sm" variant="primary" onClick={exportReportPdf}>Report PDF (Print)</Button>
               </div>
+              <div className="font-mono text-[9px] text-ink-500">{COPYRIGHT_NOTICE}</div>
               <div className="font-mono text-[9px] text-ink-500">History is stored locally in-browser (read-only evidence aid). For durable ops storage, forward gateway samples to a historian/DB.</div>
             </div>
           </Panel>

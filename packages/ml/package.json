@@ -1,0 +1,12 @@
+{
+  "name": "@mine-os/ml",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "dependencies": {
+    "@mine-os/contracts": "0.1.0"
+  },
+  "description": "ML scaffolding for specialist agents: dataset/feature specs, training/eval interfaces, model registry, and versioned inference (advisory, provenanced)."
+}

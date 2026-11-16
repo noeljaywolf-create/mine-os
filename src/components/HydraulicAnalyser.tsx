@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+﻿import { useMemo, useState } from 'react';
 import { Badge, Button, Field, Notice, Panel, Range, Select, Metric, MetricGrid, MetricCell } from '../design-system';
 import { useActiveScenario, useDerived, useDisplayWorld } from '../store/hooks';
 import { useMineStore } from '../store/mineStore';
@@ -31,14 +31,24 @@ export function HydraulicAnalyser() {
       curveScale: scenarioInputs.pumpOverrides[p.id]?.curveScale ?? 1 } satisfies CurvePump));
   const series = curveSamples(curves, plotPipe, mine.pumps.filter(p => p.sumpId === pump.sumpId).reduce((q, p) => q + p.ratedFlowM3h, 0) * 1.3);
   const stationFlow = mine.pumps.filter(p => p.sumpId === pump.sumpId).reduce((q, p) => q + (derived.pumpStates[p.id].dischargeContributionM3h ?? 0), 0);
-  const option = useMemo<EChartsOption>(() => ({ backgroundColor: 'transparent',
-    tooltip: { trigger: 'axis' }, legend: { textStyle: { color: '#a5b4c5' } },
-    grid: { left: 65, right: 25, top: 40, bottom: 50 },
-    xAxis: { type: 'value', name: 'Q m³/h', nameLocation: 'middle', nameGap: 30, axisLabel: { color: '#8291a4' } },
-    yAxis: { type: 'value', name: 'Head m', axisLabel: { color: '#8291a4' }, max: Math.max(...series.map(p => p.pumpHeadM), pipe.staticHeadM * 1.5) * 1.2 },
-    series: [{ name: 'Combined station pump curve', type: 'line', showSymbol: false, data: series.map(p => [p.flowM3h, p.pumpHeadM]), lineStyle: { color: '#6fd3e6' } },
-      { name: 'Shared-main system curve', type: 'line', showSymbol: false, data: series.map(p => [p.flowM3h, p.systemHeadM]), lineStyle: { color: '#F4C06A', type: 'dashed', width: 2 } },
-      { name: 'Calculated station duty', type: 'scatter', symbolSize: 12, data: state.hydraulic?.status === 'solved' ? [[stationFlow, state.hydraulic.headM]] : [], itemStyle: { color: '#48d597' } }] }), [series, stationFlow, state.hydraulic, pipe.staticHeadM]);
+  const option = useMemo<EChartsOption>(() => {
+    const maxHead = Math.max(0, ...series.map(p => Math.max(p.pumpHeadM, p.systemHeadM)), pipe.staticHeadM * 1.5, (state.hydraulic?.headM ?? 0) * 1.2) * 1.15 || 120;
+    const maxFlow = Math.max(10, ...series.map(p => p.flowM3h), stationFlow * 1.2) * 1.05 || 100;
+    const duty = state.hydraulic?.status === 'solved' ? [stationFlow, state.hydraulic.headM] : null;
+    return {
+      backgroundColor: 'transparent',
+      tooltip: { trigger: 'axis', axisPointer: { type: 'cross', label: { backgroundColor: '#1e293b', color: '#e2e8f0' } }, backgroundColor: 'rgba(15,23,42,0.97)', borderColor: '#334155', textStyle: { color: '#e2e8f0', fontSize: 12 } },
+      legend: { top: 0, left: 'center', itemGap: 18, icon: 'roundRect', textStyle: { color: '#94a3b8', fontSize: 11 } },
+      grid: { left: 60, right: 28, top: 44, bottom: 56 },
+      xAxis: { type: 'value', name: 'Flow rate Q (m³/h)', nameLocation: 'middle', nameGap: 34, min: 0, max: maxFlow, axisLine: { lineStyle: { color: '#475569' } }, axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: 'rgba(148,163,184,0.10)' } } },
+      yAxis: { type: 'value', name: 'Head H (m)', nameLocation: 'middle', nameGap: 44, min: 0, max: maxHead, axisLine: { lineStyle: { color: '#475569' } }, axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: 'rgba(148,163,184,0.10)' } } },
+      series: [
+        { name: 'Pump curve (station)', type: 'line', smooth: 0.2, showSymbol: false, data: series.map(p => [p.flowM3h, p.pumpHeadM]), lineStyle: { color: '#22d3ee', width: 2.5 }, areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(34,211,238,0.16)' }, { offset: 1, color: 'rgba(34,211,238,0.01)' }] } }, z: 2 },
+        { name: 'System curve', type: 'line', smooth: 0.2, showSymbol: false, data: series.map(p => [p.flowM3h, p.systemHeadM]), lineStyle: { color: '#f59e0b', width: 2, type: 'dashed' }, z: 2 },
+        ...(duty ? [{ name: 'Operating duty', type: 'scatter', data: [duty], symbol: 'circle', symbolSize: 14, itemStyle: { color: '#34d399', borderColor: '#ecfeff', borderWidth: 2, shadowBlur: 10, shadowColor: 'rgba(52,211,153,0.4)' }, label: { show: true, position: 'top', distance: 10, color: '#d1fae5', fontSize: 10, lineHeight: 14, formatter: () => `Duty point\n${stationFlow.toFixed(1)} m³/h · ${(state.hydraulic?.headM ?? 0).toFixed(1)} m` }, markLine: { silent: true, symbol: ['none', 'none'], lineStyle: { color: 'rgba(52,211,153,0.35)', type: 'dotted', width: 1 }, label: { show: false }, data: [{ xAxis: stationFlow }, { yAxis: state.hydraulic?.headM ?? 0 }] }, z: 10 } as any] : []),
+      ],
+    };
+  }, [series, stationFlow, state.hydraulic, pipe.staticHeadM]);
   const editable = !scenario.isBaseline && !replay;
   const apply = (p: Parameters<typeof patch>[0]) => setMessage(patch(p).message);
   const changePipe = (p: Partial<typeof pipe>) => apply({ engineering: { pipes: { [pump.sumpId]: { ...pipe, ...p } } } });
@@ -51,7 +61,7 @@ export function HydraulicAnalyser() {
     </div>
     <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
       <div><Field label="Pump / train"><Select value={pump.id} onChange={e => select({ assetId: e.target.value, sumpId: mine.pumps.find(p => p.id === e.target.value)?.sumpId ?? null })}>{mine.pumps.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>
-        <EChart option={option} height={300} />
+        <EChart option={option} height={340} />
         <MetricGrid cols={4}><MetricCell><Metric label="Selected pump flow" value={state.flowM3h.toFixed(1)} unit="m³/h" /></MetricCell>
           <MetricCell><Metric label="Station head" value={(state.hydraulic?.headM ?? 0).toFixed(1)} unit="m" /></MetricCell>
           <MetricCell><Metric label="Input power" value={state.powered && state.hydraulic?.status !== 'solved' ? 'Not modelled' : state.powerKw.toFixed(1)} unit="kW" /></MetricCell>

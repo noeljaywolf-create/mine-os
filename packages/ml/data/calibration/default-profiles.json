@@ -1,0 +1,26 @@
+{
+  "profiles": [
+    {
+      "id": "cal-global-default-v1",
+      "agentId": "all",
+      "target": "general",
+      "siteId": "default",
+      "version": "1.0.0",
+      "status": "active",
+      "createdAtMs": 1763251200000,
+      "parameters": { "note": "Conservative general defaults; calibrate per site from validated feedback and known events (Approach A)." },
+      "thresholds": {
+        "agent": {
+          "dewater": { "fillWarning": 0.75, "fillHigh": 0.85, "fillCritical": 0.9, "ttcUrgentSec": 14400, "ttcWarningSec": 21600, "netPositiveM3h": 0.01 },
+          "power": { "marginWarningKw": 50, "supplyRatioDegraded": 0.999 },
+          "maintenance": { "conditionConcern": 0.75, "conditionLow": 0.7 },
+          "production": { "constrainedRatio": 0.999 },
+          "safety": { "fillCritical": 0.95, "fillWarning": 0.85, "ttcCriticalSec": 7200, "ttcWarningSec": 21600 }
+        }
+      },
+      "derivedFrom": ["docs/research/GROUNDING-CASE-STUDIES.md"],
+      "metrics": {},
+      "notes": ["Default profile - not site-calibrated. Activate site-specific profiles after backtest/validation."]
+    }
+  ]
+}

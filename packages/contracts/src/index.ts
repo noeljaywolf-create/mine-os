@@ -4,3 +4,6 @@ export * from './agents';
 export * from './policy';
 export * from './snapshots';
 export * from './model';
+export * from './ml';
+export * from './knowledge';
+export * from './feedback';

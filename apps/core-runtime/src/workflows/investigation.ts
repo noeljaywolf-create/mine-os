@@ -13,6 +13,9 @@ export interface InvestigationInput {
   siteId: string;
   trigger: any;
   snapshot: any;
+  /** Optional subset/order of specialist agents; defaults to all six. */
+  agentIds?: string[];
+  context?: Record<string, unknown>;
 }
 
 export const stateQuery = defineQuery<string>('state');
@@ -26,15 +29,33 @@ export async function investigationWorkflow(input: InvestigationInput): Promise<
   const review = await plannerReview({ investigation: input, evidence: [], reports: [] });
 
   state = 'dispatching';
-  const tasks = [
-    { id: `${input.investigationId}-t-power`, investigationId: input.investigationId, agentId: 'power', kind: 'analysis', objective: 'Assess power supply/runtime implications', inputs: {}, snapshotRefs: input.snapshot?.id ? [input.snapshot.id] : [], constraints: [], status: 'dispatched', attempt: 0, createdAtMs: Date.now() },
-    { id: `${input.investigationId}-t-deepwater`, investigationId: input.investigationId, agentId: 'deepwater', kind: 'analysis', objective: 'Assess pumping/inflow implications', inputs: {}, snapshotRefs: input.snapshot?.id ? [input.snapshot.id] : [], constraints: [], status: 'dispatched', attempt: 0, createdAtMs: Date.now() },
-  ];
+  const agentIds = (input as any).agentIds || ['power', 'deepwater', 'production', 'engineering', 'maintenance', 'safety'];
+  const objectives: Record<string, string> = {
+    power: 'Assess power supply/runtime implications',
+    deepwater: 'Assess pumping/inflow and dewatering risk',
+    production: 'Assess production/access and throughput impact',
+    engineering: 'Assess equipment/network feasibility and constraints',
+    maintenance: 'Assess condition, faults, and telemetry health',
+    safety: 'Assess safety-relevant restrictions and hazard escalation indicators (advisory)',
+  };
+  const tasks = agentIds.map((agentId: string) => ({
+    id: `${input.investigationId}-t-${agentId}`,
+    investigationId: input.investigationId,
+    agentId,
+    kind: 'analysis',
+    objective: objectives[agentId] || `Assess ${agentId} domain`,
+    inputs: { trigger: input.trigger },
+    snapshotRefs: input.snapshot?.id ? [input.snapshot.id] : [],
+    constraints: ['advisory-only', 'no-industrial-writes', 'deterministic-snapshot-analysis'],
+    status: 'dispatched',
+    attempt: 0,
+    createdAtMs: Date.now(),
+  }));
 
   state = 'awaiting_evidence';
   const results = [] as any[];
   for (const t of tasks) { // sequential in skeleton; parallelizable with bounded concurrency
-    results.push(await executeSpecialistTask(t as any, input.snapshot));
+    results.push(await executeSpecialistTask(t as any, input.snapshot, { siteId: input.siteId, trigger: input.trigger }));
   }
 
   state = 'validating_evidence';

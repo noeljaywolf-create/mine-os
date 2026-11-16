@@ -19,6 +19,7 @@ import type { MineDefinition } from '../domain/mine';
 import { MINE } from '../data/mine';
 import { buildLibrary, createBaseline } from '../data/scenarios';
 import { MINE_GRAPH } from '../simulation';
+import { createBaselineScenario, emptyOverrides } from '../simulation/scenarios';
 import { DEFAULT_ASSUMPTIONS } from '../simulation/assumptions';
 import {
   createWorld,
@@ -88,6 +89,104 @@ export interface ControlIntent {
 let gatewayPoller: ReturnType<typeof setInterval> | null = null;
 let gatewayAdapter: GatewayHttpAdapter | null = null;
 
+const DEMO_DATA_KEY = 'mineos.demoDataEnabled';
+function readDemoDataEnabled(): boolean {
+  if (typeof window === 'undefined') return true;
+  try {
+    const raw = localStorage.getItem(DEMO_DATA_KEY);
+    if (raw === null) return true;
+    return raw === 'true';
+  } catch {
+    return true;
+  }
+}
+function persistDemoDataEnabled(enabled: boolean) {
+  try { localStorage.setItem(DEMO_DATA_KEY, String(enabled)); } catch {}
+}
+
+function makeEmptyMine(): MineDefinition {
+  return {
+    id: 'mine-empty',
+    name: 'No mine data',
+    location: '',
+    description: 'No demo or pilot data loaded. Enable demo data or load a pilot bundle/live connection.',
+    geometryDisclaimer: 'No data loaded.',
+    levels: [],
+    zones: [],
+    sumps: [],
+    pumps: [],
+    feeders: [],
+    sensors: [],
+    assets: [],
+    dependencies: [],
+    plant: { id: 'plant-none', name: 'No plant', designRateTph: 0, criticalSharePct: 100, levelId: '', twinPosition: { x: 0, y: 0 }, description: '' },
+    orebodyOutline: [],
+    surfaceFacilities: [],
+  };
+}
+
+function buildSyntheticCore() {
+  const baseline = createBaseline(DEMO_EPOCH_MS);
+  const library = buildLibrary(baseline, MINE, DEMO_EPOCH_MS);
+  const scenarios = [baseline, ...library];
+  const runs: Record<ScenarioId, ScenarioRun> = {};
+  for (const scenario of scenarios) {
+    runs[scenario.id] = makeRun(contextFor({ baseAssumptions: DEFAULT_ASSUMPTIONS, mine: MINE, graph: MINE_GRAPH }, scenario), scenario, MINE);
+  }
+  return {
+    mine: MINE,
+    graph: MINE_GRAPH,
+    baseAssumptions: { ...DEFAULT_ASSUMPTIONS },
+    demoEpochMs: DEMO_EPOCH_MS,
+    scenarios,
+    activeScenarioId: baseline.id,
+    runs,
+    pilot: {
+      mode: 'synthetic' as const,
+      dataset: null as PilotDataset | null,
+      replayAtMs: null as number | null,
+      replayEndMs: null as number | null,
+      lastError: null as string | null,
+      gatewayUrl: null as string | null,
+      liveObservations: null as Record<string, { sensorId: string; epochMs: number; value: number; quality: number; unit: string }> | null,
+    },
+  };
+}
+
+function buildEmptyCore(nowMs = Date.now()) {
+  const mine = makeEmptyMine();
+  const graph = new DependencyGraph(mine.dependencies, mine.assets.map((a) => a.id));
+  const baseline: Scenario = {
+    ...createBaselineScenario(nowMs),
+    name: 'Baseline (no data)',
+    description: 'No demo or pilot data loaded.',
+    overrides: emptyOverrides(),
+    tags: ['baseline', 'empty'],
+  };
+  const scenarios = [baseline];
+  const runs: Record<ScenarioId, ScenarioRun> = {};
+  const ctx: EngineContext = { mine, graph, assumptions: mergeAssumptions(DEFAULT_ASSUMPTIONS, baseline.overrides.assumptions) };
+  runs[baseline.id] = makeRun(ctx, baseline, mine);
+  return {
+    mine,
+    graph,
+    baseAssumptions: { ...DEFAULT_ASSUMPTIONS },
+    demoEpochMs: nowMs,
+    scenarios,
+    activeScenarioId: baseline.id,
+    runs,
+    pilot: {
+      mode: 'empty' as const,
+      dataset: null as PilotDataset | null,
+      replayAtMs: null as number | null,
+      replayEndMs: null as number | null,
+      lastError: null as string | null,
+      gatewayUrl: null as string | null,
+      liveObservations: null as Record<string, { sensorId: string; epochMs: number; value: number; quality: number; unit: string }> | null,
+    },
+  };
+}
+
 /** Simulated seconds advanced per real second at 1Ã— speed. */
 export const SIM_SECONDS_PER_REAL_SECOND = 300;
 /** Replay frame interval in simulated seconds. */
@@ -149,6 +248,8 @@ export interface MineState {
   graph: DependencyGraph;
   baseAssumptions: Assumptions;
   demoEpochMs: number;
+  /** When false, synthetic/demo mine & scenario library are removed (clean/empty state). Persisted. */
+  demoDataEnabled: boolean;
 
   scenarios: Scenario[];
   activeScenarioId: ScenarioId;
@@ -156,7 +257,7 @@ export interface MineState {
 
   // ---- pilot / real-data MVP (pluggable data source)
   pilot: {
-    mode: 'synthetic' | 'pilot-replay' | 'live-gateway';
+    mode: 'synthetic' | 'pilot-replay' | 'live-gateway' | 'empty';
     dataset: import('../integration/pilot').PilotDataset | null;
     replayAtMs: number | null;
     replayEndMs: number | null;
@@ -170,6 +271,7 @@ export interface MineState {
   disconnectGateway: () => ActionResult;
   unloadPilot: () => ActionResult;
   setPilotReplayTime: (epochMs: number | null) => void;
+  setDemoDataEnabled: (enabled: boolean) => ActionResult;
 
   role: UserRole;
   actorName: string;
@@ -559,23 +661,13 @@ function advance(state: MineState, steps: number): Partial<MineState> {
 
 // ---------------------------------------------------------------------------
 export const useMineStore = create<MineState>((set, get) => {
-  const baseline = createBaseline(DEMO_EPOCH_MS);
-  const library = buildLibrary(baseline, MINE, DEMO_EPOCH_MS);
-  const scenarios = [baseline, ...library];
-
-  const initialRuns: Record<ScenarioId, ScenarioRun> = {};
-  for (const scenario of scenarios) {
-    initialRuns[scenario.id] = makeRun(contextFor({ baseAssumptions: DEFAULT_ASSUMPTIONS, mine: MINE, graph: MINE_GRAPH }, scenario), scenario, MINE);
-  }
+  const demoDataEnabled = readDemoDataEnabled();
+  const core = demoDataEnabled ? buildSyntheticCore() : buildEmptyCore();
+  const seedAtMs = core.demoEpochMs;
 
   const initialState = {
-    mine: MINE,
-    graph: MINE_GRAPH,
-    baseAssumptions: DEFAULT_ASSUMPTIONS,
-    demoEpochMs: DEMO_EPOCH_MS,
-    scenarios,
-    activeScenarioId: baseline.id,
-    runs: initialRuns,
+    ...core,
+    demoDataEnabled,
     role: 'dewatering-engineer' as UserRole,
     actorName: PERSONAS['dewatering-engineer'],
     running: false,
@@ -585,43 +677,34 @@ export const useMineStore = create<MineState>((set, get) => {
     replayIndex: 0,
     selection: { assetId: null, incidentId: null, sumpId: null },
     filters: { systems: [], statuses: [], levelIds: [], search: '' },
-    pilot: {
-      mode: 'synthetic' as const,
-      dataset: null as PilotDataset | null,
-      replayAtMs: null as number | null,
-      replayEndMs: null as number | null,
-      lastError: null as string | null,
-      gatewayUrl: null as string | null,
-      liveObservations: null as Record<string, { sensorId: string; epochMs: number; value: number; quality: number; unit: string }> | null,
-    },
     alertRules: (typeof window !== 'undefined' ? (() => { try { return JSON.parse(localStorage.getItem('mineos.alertRules') || '[]') as AlertRule[]; } catch { return [] as AlertRule[]; } })() : [] as AlertRule[]),
     alertEvents: [] as AlertEvent[],
     operatingMode: (typeof window !== 'undefined' ? ((localStorage.getItem('mineos.operatingMode') as OperatingMode) || 'test') : 'test') as OperatingMode,
     controlIntents: [] as ControlIntent[],
     toasts: [],
-    comments: [
+    comments: demoDataEnabled ? [
       {
         id: 'cmt-seed-1',
-        scenarioId: baseline.id,
+        scenarioId: core.activeScenarioId,
         incidentId: null,
         author: 'A. Novak',
         role: 'Dewatering Engineer',
-        atMs: DEMO_EPOCH_MS,
+        atMs: seedAtMs,
         body: 'Baseline reference uses synthetic stage-storage geometry and calculated pump/system operating points. Review actual flow and motor constraints; these are not field-validated operating duties.',
         decisionId: null,
       },
-    ],
+    ] : [],
     decisions: [],
     activity: [
       {
         id: 'act-seed-1',
-        atMs: DEMO_EPOCH_MS,
+        atMs: seedAtMs,
         atSimSec: 0,
         actor: 'Simulation engine',
         role: 'system',
         kind: 'scenario' as const,
-        summary: 'Baseline scenario initialised from the synthetic mine model.',
-        refs: [baseline.id],
+        summary: demoDataEnabled ? 'Baseline scenario initialised from the synthetic mine model.' : 'No demo data loaded. Enable demo data or connect a pilot/live source.',
+        refs: [core.activeScenarioId],
       },
     ],
   };
@@ -686,15 +769,45 @@ export const useMineStore = create<MineState>((set, get) => {
     unloadPilot: () => {
       if (gatewayPoller) { clearInterval(gatewayPoller); gatewayPoller = null; }
       gatewayAdapter = null;
-      const baseline = createBaseline(DEMO_EPOCH_MS);
-      const library = buildLibrary(baseline, MINE, DEMO_EPOCH_MS);
-      const scenarios = [baseline, ...library];
-      const runs: Record<ScenarioId, ScenarioRun> = {};
-      for (const scenario of scenarios) runs[scenario.id] = makeRun({ mine: MINE, graph: MINE_GRAPH, assumptions: DEFAULT_ASSUMPTIONS }, scenario, MINE);
-      set({ mine: MINE, graph: MINE_GRAPH, baseAssumptions: DEFAULT_ASSUMPTIONS, demoEpochMs: DEMO_EPOCH_MS, scenarios, activeScenarioId: baseline.id, runs, running: false, replayActive: false, replayIndex: 0, pilot: { mode: 'synthetic', dataset: null, replayAtMs: null, replayEndMs: null, lastError: null, gatewayUrl: null, liveObservations: null } });
-      return { ok: true, message: 'Returned to synthetic demo.' };
+      const demoEnabled = get().demoDataEnabled;
+      const core = demoEnabled ? buildSyntheticCore() : buildEmptyCore();
+      set({
+        ...core,
+        running: false,
+        replayActive: false,
+        replayIndex: 0,
+        advanceTask: null,
+        toasts: [...get().toasts, { id: uid('toast'), kind: 'info' as const, title: demoEnabled ? 'Synthetic demo restored' : 'Demo data removed', message: demoEnabled ? 'Returned to synthetic demo data.' : 'Synthetic/demo data cleared. Enable demo data or load a pilot/live source.', atMs: Date.now() }].slice(-4),
+        activity: [...get().activity, { id: uid('act'), atMs: Date.now(), atSimSec: 0, actor: get().actorName, role: roleName(get().role), kind: 'scenario' as const, summary: demoEnabled ? 'Returned to synthetic demo data.' : 'Cleared synthetic/demo data (empty state).', refs: [core.activeScenarioId] }].slice(-300),
+      });
+      return { ok: true, message: demoEnabled ? 'Returned to synthetic demo.' : 'Synthetic/demo data cleared.' };
     },
     setPilotReplayTime: (epochMs) => set(s => ({ pilot: { ...s.pilot, replayAtMs: epochMs } })),
+
+    setDemoDataEnabled: (enabled) => {
+      if (get().demoDataEnabled === enabled) return { ok: true, message: enabled ? 'Demo data already enabled.' : 'Demo data already disabled.' };
+      persistDemoDataEnabled(enabled);
+      const state = get();
+      // If in live gateway or pilot replay with loaded dataset, keep current data but update flag and future behavior.
+      const inPilotData = state.pilot.mode === 'pilot-replay' || state.pilot.mode === 'live-gateway';
+      if (inPilotData) {
+        set({ demoDataEnabled: enabled });
+        return { ok: true, message: enabled ? 'Demo data enabled (will restore on reset/disconnect when applicable).' : 'Demo data disabled (pilot/live data unchanged).' };
+      }
+      const core = enabled ? buildSyntheticCore() : buildEmptyCore();
+      set({
+        ...core,
+        demoDataEnabled: enabled,
+        running: false,
+        replayActive: false,
+        replayIndex: 0,
+        advanceTask: null,
+        selection: { assetId: null, incidentId: null, sumpId: null },
+        toasts: [...state.toasts, { id: uid('toast'), kind: 'info' as const, title: enabled ? 'Demo data enabled' : 'Demo data removed', message: enabled ? 'Synthetic demo mine and scenarios restored.' : 'Synthetic/demo data cleared. Load a pilot bundle or connect a live gateway for real data.', atMs: Date.now() }].slice(-4),
+        activity: [...state.activity, { id: uid('act'), atMs: Date.now(), atSimSec: 0, actor: state.actorName, role: roleName(state.role), kind: 'scenario' as const, summary: enabled ? 'Enabled synthetic demo data.' : 'Disabled synthetic/demo data (empty state).', refs: [core.activeScenarioId] }].slice(-300),
+      });
+      return { ok: true, message: enabled ? 'Synthetic demo data restored.' : 'Synthetic/demo data removed.' };
+    },
 
     probeGateway: async (gatewayUrl) => {
       try {
@@ -748,8 +861,19 @@ export const useMineStore = create<MineState>((set, get) => {
     disconnectGateway: () => {
       if (gatewayPoller) { clearInterval(gatewayPoller); gatewayPoller = null; }
       gatewayAdapter = null;
-      set(s => ({ pilot: { ...s.pilot, mode: s.pilot.dataset ? 'pilot-replay' : 'synthetic', gatewayUrl: null, liveObservations: null } }));
-      return { ok: true, message: 'Gateway disconnected.' };
+      const state = get();
+      if (state.pilot.dataset) {
+        set(s => ({ pilot: { ...s.pilot, mode: 'pilot-replay', gatewayUrl: null, liveObservations: null, lastError: null } }));
+        return { ok: true, message: 'Gateway disconnected. Returned to pilot replay.' };
+      }
+      if (state.demoDataEnabled) {
+        set(s => ({ pilot: { ...s.pilot, mode: 'synthetic', gatewayUrl: null, liveObservations: null, lastError: null } }));
+        return { ok: true, message: 'Gateway disconnected.' };
+      }
+      // Demo disabled and no dataset: go to empty (no fake data)
+      const core = buildEmptyCore();
+      set({ ...core, running: false, replayActive: false, replayIndex: 0, advanceTask: null });
+      return { ok: true, message: 'Gateway disconnected. No demo data enabled.' };
     },
 
     // ---------------------------------------------------------- simulation

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const EvidenceKindSchema = z.enum(['measurement','derived','document','decision','hypothesis','simulation','verification']);
+export const EvidenceKindSchema = z.enum(['measurement','derived','document','decision','hypothesis','simulation','verification','model-prediction']);
 export type EvidenceKind = z.infer<typeof EvidenceKindSchema>;
 
 export const EvidenceItemSchema = z.object({

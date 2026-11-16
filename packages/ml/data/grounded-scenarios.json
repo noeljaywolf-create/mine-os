@@ -1,0 +1,53 @@
+{
+  "dataset": {
+    "id": "mineos-grounded-scenarios-seed",
+    "version": "0.1.0",
+    "title": "Seed grounded scenarios (case-study informed)",
+    "description": "Small seed set encoding scenario archetypes and labels derived from public case-study/literature grounding for bootstrapping and evaluation scaffolding. Not site data.",
+    "provenance": {
+      "sources": [
+        "https://www.mdpi.com/2071-1050/18/4/1774",
+        "https://pmc.ncbi.nlm.nih.gov/articles/PMC12031373/"
+      ],
+      "note": "Labels are scenario-intent labels for synthetic/derived evaluation, not measured outcomes."
+    }
+  },
+  "records": [
+    {
+      "id": "ex-power-loss-1",
+      "archetype": "power-loss-dewatering",
+      "features": { "power.demand_kw": 420, "power.supply_kw": 120, "power.margin_kw": -300, "power.unavailable_feeders": 1, "dewater.max_sump_fill_ratio": 0.78, "dewater.max_net_inflow_m3h": 85, "dewater.total_discharge_m3h": 40, "dewater.pumps_running": 1, "dewater.pumps_unavailable": 2, "production.min_zone_ratio": 0.7, "production.constrained_zones": 1, "maintenance.pump_concerns": 0, "maintenance.stale_sensors": 0, "safety.critical_flood_flags": 1 },
+      "labels": { "flood_risk_high": true, "power_constrained": true, "production_restricted": true, "pump_failure_likely": false }
+    },
+    {
+      "id": "ex-pump-degradation-1",
+      "archetype": "pump-degradation-failure",
+      "features": { "power.demand_kw": 260, "power.supply_kw": 500, "power.margin_kw": 240, "power.unavailable_feeders": 0, "dewater.max_sump_fill_ratio": 0.72, "dewater.max_net_inflow_m3h": 35, "dewater.total_discharge_m3h": 55, "dewater.pumps_running": 2, "dewater.pumps_unavailable": 0, "production.min_zone_ratio": 0.9, "production.constrained_zones": 1, "maintenance.pump_concerns": 1, "maintenance.stale_sensors": 0, "safety.critical_flood_flags": 0 },
+      "labels": { "flood_risk_high": false, "power_constrained": false, "production_restricted": true, "pump_failure_likely": true }
+    },
+    {
+      "id": "ex-inflow-surge-1",
+      "archetype": "inflow-surge",
+      "features": { "power.demand_kw": 300, "power.supply_kw": 600, "power.margin_kw": 300, "power.unavailable_feeders": 0, "dewater.max_sump_fill_ratio": 0.91, "dewater.max_net_inflow_m3h": 140, "dewater.total_discharge_m3h": 120, "dewater.pumps_running": 3, "dewater.pumps_unavailable": 0, "production.min_zone_ratio": 0.75, "production.constrained_zones": 1, "maintenance.pump_concerns": 0, "maintenance.stale_sensors": 0, "safety.critical_flood_flags": 1 },
+      "labels": { "flood_risk_high": true, "power_constrained": false, "production_restricted": true, "pump_failure_likely": false }
+    },
+    {
+      "id": "ex-instrumentation-1",
+      "archetype": "instrumentation-loss",
+      "features": { "power.demand_kw": 240, "power.supply_kw": 500, "power.margin_kw": 260, "power.unavailable_feeders": 0, "dewater.max_sump_fill_ratio": 0.55, "dewater.max_net_inflow_m3h": 5, "dewater.total_discharge_m3h": 90, "dewater.pumps_running": 2, "dewater.pumps_unavailable": 0, "production.min_zone_ratio": 1.0, "production.constrained_zones": 0, "maintenance.pump_concerns": 0, "maintenance.stale_sensors": 4, "safety.critical_flood_flags": 0 },
+      "labels": { "flood_risk_high": false, "power_constrained": false, "production_restricted": false, "pump_failure_likely": false }
+    },
+    {
+      "id": "ex-compound-1",
+      "archetype": "compound-cascade",
+      "features": { "power.demand_kw": 380, "power.supply_kw": 200, "power.margin_kw": -180, "power.unavailable_feeders": 1, "dewater.max_sump_fill_ratio": 0.93, "dewater.max_net_inflow_m3h": 110, "dewater.total_discharge_m3h": 30, "dewater.pumps_running": 1, "dewater.pumps_unavailable": 2, "production.min_zone_ratio": 0.5, "production.constrained_zones": 2, "maintenance.pump_concerns": 1, "maintenance.stale_sensors": 1, "safety.critical_flood_flags": 1 },
+      "labels": { "flood_risk_high": true, "power_constrained": true, "production_restricted": true, "pump_failure_likely": true }
+    },
+    {
+      "id": "ex-nominal-1",
+      "archetype": "nominal",
+      "features": { "power.demand_kw": 220, "power.supply_kw": 500, "power.margin_kw": 280, "power.unavailable_feeders": 0, "dewater.max_sump_fill_ratio": 0.45, "dewater.max_net_inflow_m3h": -10, "dewater.total_discharge_m3h": 110, "dewater.pumps_running": 2, "dewater.pumps_unavailable": 0, "production.min_zone_ratio": 1.0, "production.constrained_zones": 0, "maintenance.pump_concerns": 0, "maintenance.stale_sensors": 0, "safety.critical_flood_flags": 0 },
+      "labels": { "flood_risk_high": false, "power_constrained": false, "production_restricted": false, "pump_failure_likely": false }
+    }
+  ]
+}
