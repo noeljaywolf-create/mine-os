@@ -1,0 +1,9 @@
+{
+  "name": "@mine-os/engineering-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "description": "Deterministic simulation/domain/engineering services and snapshot provenance (authoritative demo logic). Wraps existing src/domain and src/simulation for shared use."
+}

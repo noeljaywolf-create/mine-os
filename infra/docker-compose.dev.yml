@@ -1,0 +1,39 @@
+version: "3.8"
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: mineos
+      POSTGRES_PASSWORD: mineos
+      POSTGRES_DB: mineos
+    ports:
+      - "5432:5432"
+    volumes:
+      - mineos_pg:/var/lib/postgresql/data
+
+  # Temporal dev stack (simplified). For production, follow Temporal deployment guidance.
+  temporal:
+    image: temporalio/auto-setup:1.25
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=mineos
+      - POSTGRES_PWD=mineos
+      - POSTGRES_SEEDS=postgres
+    ports:
+      - "7233:7233"
+    depends_on:
+      - postgres
+
+  temporal-ui:
+    image: temporalio/ui:2.31.2
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:5173
+    ports:
+      - "8080:8080"
+    depends_on:
+      - temporal
+
+volumes:
+  mineos_pg:
