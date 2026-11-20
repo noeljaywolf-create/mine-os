@@ -23,6 +23,8 @@ MINE OS Quick Connect expects a **base URL** serving: `GET /health`, `/catalog` 
 2. Map `sourceTag` (as in CSV) to canonical `sensorId`/`assetId`/`kind`/`unit`.
 3. Load both files in **Telemetry & Integrations → File/CSV replay → Load pilot bundle**.
 
+**Note:** CSV replay `site.config.json` uses strict schema enums: `kind = level|flow|pressure|vibration|power|temperature`, `unit = m|m3/h|kPa|mm/s|kW|degC`. Signals like voltage (V), current (A), frequency (Hz), power factor, %, or state/alarm are better sent via the **simple HTTP gateway / Quick Connect** path (`gateway-simple.template.json` + `samples.template.json`), which accepts those values directly.
+
 ## 3) On-site checklist
 - [ ] Monitor/gateway make, model, interface (HTTP API / Modbus TCP / OPC UA / MQTT / export)
 - [ ] IP/URL, port, network/VPN access, read-only credentials/token (if any)

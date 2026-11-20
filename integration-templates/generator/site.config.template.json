@@ -10,7 +10,7 @@
   "pilot": {
     "label": "Generator pilot (read-only)",
     "readOnly": true,
-    "notes": "Fill sensor mappings and provenance. Validate units/scaling/IDs against source."
+    "notes": "Fill sensor mappings and provenance. Validate units/scaling/IDs against source. CSV replay mappings must use schema-supported kind/unit enums."
   },
   "sensors": [
     {
@@ -28,11 +28,11 @@
       "provenance": "measured"
     },
     {
-      "sourceTag": "TODO_CSV_TAG_GEN_V",
-      "sensorId": "gen1_voltage_v",
+      "sourceTag": "TODO_CSV_TAG_GEN_TEMP_C",
+      "sensorId": "gen1_coolant_temp_c",
       "assetId": "gen-1",
-      "kind": "power",
-      "unit": "V",
+      "kind": "temperature",
+      "unit": "degC",
       "scale": 1,
       "deadband": 0,
       "minQuality": 0,
@@ -42,31 +42,17 @@
       "provenance": "measured"
     },
     {
-      "sourceTag": "TODO_CSV_TAG_GEN_FUEL",
-      "sensorId": "gen1_fuel_level_pct",
+      "sourceTag": "TODO_CSV_TAG_GEN_VIB_MM_S",
+      "sensorId": "gen1_vibration_mm_s",
       "assetId": "gen-1",
-      "kind": "level",
-      "unit": "%",
+      "kind": "vibration",
+      "unit": "mm/s",
       "scale": 1,
       "deadband": 0,
       "minQuality": 0,
       "stalenessThresholdSec": 300,
       "samplePeriodSec": 60,
       "accuracyPct": 2,
-      "provenance": "measured"
-    },
-    {
-      "sourceTag": "TODO_CSV_TAG_GEN_RUN",
-      "sensorId": "gen1_running",
-      "assetId": "gen-1",
-      "kind": "power",
-      "unit": "kW",
-      "scale": 1,
-      "deadband": 0,
-      "minQuality": 0,
-      "stalenessThresholdSec": 300,
-      "samplePeriodSec": 60,
-      "accuracyPct": 0,
       "provenance": "measured"
     }
   ],
@@ -87,9 +73,9 @@
     "rainfallScenarioMultiplier": 1.0
   },
   "instructions": [
-    "sourceTag must match the sensor_tag column in telemetry.template.csv. sensorId is canonical in MINE OS.",
-    "kind: level|flow|pressure|vibration|power|temperature. unit: m|m3/h|kPa|mm/s|kW|degC.",
-    "If a value is boolean/state in source, map/export as numeric (0/1) and set unit/scale appropriately.",
-    "provenance: measured|estimated|synthetic. Set staleness/sample periods to match source."
+    "CSV replay path: sourceTag must match the sensor_tag column in telemetry CSV. sensorId is canonical in MINE OS.",
+    "Schema limits (site.config): kind = level|flow|pressure|vibration|power|temperature; unit = m|m3/h|kPa|mm/s|kW|degC; provenance = measured|estimated|synthetic.",
+    "Signals not representable by these enums/units (e.g. V, A, Hz, pf, %, state) are best integrated via the simple HTTP gateway / Quick Connect (gateway-simple.template.json + samples.template.json) rather than CSV replay mapping.",
+    "Set staleness/sample periods, accuracy, scale, and provenance to match the source. Validate units/scaling/IDs before use."
   ]
 }
