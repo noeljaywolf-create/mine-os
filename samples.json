@@ -1,0 +1,11 @@
+{
+  "note": "Optional live values for simple-gateway.mjs. Edit and save; gateway re-reads on each request.",
+  "samples": [
+    { "sensorId": "gen_power_kw", "value": 320, "unit": "kW", "quality": 1 },
+    { "sensorId": "gen_voltage_v", "value": 400, "unit": "V", "quality": 1 },
+    { "sensorId": "gen_current_a", "value": 460, "unit": "A", "quality": 1 },
+    { "sensorId": "gen_frequency_hz", "value": 50, "unit": "Hz", "quality": 1 },
+    { "sensorId": "gen_fuel_pct", "value": 75, "unit": "%", "quality": 1 },
+    { "sensorId": "gen_running", "value": 1, "unit": "state", "quality": 1 }
+  ]
+}

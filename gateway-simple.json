@@ -1,0 +1,12 @@
+{
+  "note": "Simple read-only gateway config for MINE OS. Edit sensors/values to match the generator monitor. Optionally create samples.json next to this file to update live values without restart.",
+  "samplesFile": "samples.json",
+  "sensors": [
+    { "sensorId": "gen_power_kw", "sourceTag": "GEN_POWER_KW", "assetId": "gen-1", "kind": "power", "unit": "kW", "value": 320 },
+    { "sensorId": "gen_voltage_v", "sourceTag": "GEN_VOLTAGE_V", "assetId": "gen-1", "kind": "power", "unit": "V", "value": 400 },
+    { "sensorId": "gen_current_a", "sourceTag": "GEN_CURRENT_A", "assetId": "gen-1", "kind": "power", "unit": "A", "value": 460 },
+    { "sensorId": "gen_frequency_hz", "sourceTag": "GEN_FREQ_HZ", "assetId": "gen-1", "kind": "power", "unit": "Hz", "value": 50 },
+    { "sensorId": "gen_fuel_pct", "sourceTag": "GEN_FUEL_PCT", "assetId": "gen-1", "kind": "level", "unit": "%", "value": 75 },
+    { "sensorId": "gen_running", "sourceTag": "GEN_RUNNING", "assetId": "gen-1", "kind": "status", "unit": "state", "value": 1 }
+  ]
+}
