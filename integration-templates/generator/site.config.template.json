@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "site": {
+    "id": "TODO-SITE-ID",
+    "name": "TODO Site Name",
+    "location": "TODO location",
+    "description": "Read-only pilot import for generator/monitor telemetry.",
+    "timezone": "UTC"
+  },
+  "pilot": {
+    "label": "Generator pilot (read-only)",
+    "readOnly": true,
+    "notes": "Fill sensor mappings and provenance. Validate units/scaling/IDs against source."
+  },
+  "sensors": [
+    {
+      "sourceTag": "TODO_CSV_TAG_GEN_KW",
+      "sensorId": "gen1_active_power_kw",
+      "assetId": "gen-1",
+      "kind": "power",
+      "unit": "kW",
+      "scale": 1,
+      "deadband": 0,
+      "minQuality": 0,
+      "stalenessThresholdSec": 300,
+      "samplePeriodSec": 60,
+      "accuracyPct": 2,
+      "provenance": "measured"
+    },
+    {
+      "sourceTag": "TODO_CSV_TAG_GEN_V",
+      "sensorId": "gen1_voltage_v",
+      "assetId": "gen-1",
+      "kind": "power",
+      "unit": "V",
+      "scale": 1,
+      "deadband": 0,
+      "minQuality": 0,
+      "stalenessThresholdSec": 300,
+      "samplePeriodSec": 60,
+      "accuracyPct": 2,
+      "provenance": "measured"
+    },
+    {
+      "sourceTag": "TODO_CSV_TAG_GEN_FUEL",
+      "sensorId": "gen1_fuel_level_pct",
+      "assetId": "gen-1",
+      "kind": "level",
+      "unit": "%",
+      "scale": 1,
+      "deadband": 0,
+      "minQuality": 0,
+      "stalenessThresholdSec": 300,
+      "samplePeriodSec": 60,
+      "accuracyPct": 2,
+      "provenance": "measured"
+    },
+    {
+      "sourceTag": "TODO_CSV_TAG_GEN_RUN",
+      "sensorId": "gen1_running",
+      "assetId": "gen-1",
+      "kind": "power",
+      "unit": "kW",
+      "scale": 1,
+      "deadband": 0,
+      "minQuality": 0,
+      "stalenessThresholdSec": 300,
+      "samplePeriodSec": 60,
+      "accuracyPct": 0,
+      "provenance": "measured"
+    }
+  ],
+  "connections": [
+    {
+      "id": "site-gateway",
+      "name": "On-site read-only gateway",
+      "type": "gateway",
+      "enabled": false,
+      "readOnly": true,
+      "gatewayUrl": "http://TODO_GATEWAY_IP:8080",
+      "protocol": "http-poll",
+      "pollIntervalMs": 5000,
+      "notes": "Gateway reads monitor (Modbus/OPC UA/MQTT/API) and serves /health,/catalog,/samples/latest"
+    }
+  ],
+  "assumptions": {
+    "rainfallScenarioMultiplier": 1.0
+  },
+  "instructions": [
+    "sourceTag must match the sensor_tag column in telemetry.template.csv. sensorId is canonical in MINE OS.",
+    "kind: level|flow|pressure|vibration|power|temperature. unit: m|m3/h|kPa|mm/s|kW|degC.",
+    "If a value is boolean/state in source, map/export as numeric (0/1) and set unit/scale appropriately.",
+    "provenance: measured|estimated|synthetic. Set staleness/sample periods to match source."
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "note": "TEMPLATE: copy as gateway-simple.json and fill TODO fields. Used by scripts/simple-gateway.mjs",
+  "samplesFile": "samples.json",
+  "site": {
+    "id": "TODO-SITE-ID",
+    "name": "TODO Site / Generator"
+  },
+  "sensors": [
+    { "sensorId": "gen1_active_power_kw", "sourceTag": "TODO_GEN_KW_TAG", "assetId": "gen-1", "kind": "power", "unit": "kW", "value": 0 },
+    { "sensorId": "gen1_apparent_power_kva", "sourceTag": "TODO_GEN_KVA_TAG", "assetId": "gen-1", "kind": "power", "unit": "kVA", "value": 0 },
+    { "sensorId": "gen1_voltage_v", "sourceTag": "TODO_GEN_V_TAG", "assetId": "gen-1", "kind": "power", "unit": "V", "value": 0 },
+    { "sensorId": "gen1_current_a", "sourceTag": "TODO_GEN_A_TAG", "assetId": "gen-1", "kind": "power", "unit": "A", "value": 0 },
+    { "sensorId": "gen1_frequency_hz", "sourceTag": "TODO_GEN_HZ_TAG", "assetId": "gen-1", "kind": "power", "unit": "Hz", "value": 50 },
+    { "sensorId": "gen1_power_factor", "sourceTag": "TODO_GEN_PF_TAG", "assetId": "gen-1", "kind": "power", "unit": "pf", "value": 0 },
+    { "sensorId": "gen1_fuel_level_pct", "sourceTag": "TODO_GEN_FUEL_TAG", "assetId": "gen-1", "kind": "level", "unit": "%", "value": 0 },
+    { "sensorId": "gen1_coolant_temp_c", "sourceTag": "TODO_GEN_TEMP_TAG", "assetId": "gen-1", "kind": "temperature", "unit": "degC", "value": 0 },
+    { "sensorId": "gen1_running", "sourceTag": "TODO_GEN_RUN_TAG", "assetId": "gen-1", "kind": "status", "unit": "state", "value": 0 },
+    { "sensorId": "gen1_alarm", "sourceTag": "TODO_GEN_ALARM_TAG", "assetId": "gen-1", "kind": "status", "unit": "state", "value": 0 }
+  ],
+  "instructions": [
+    "Keep sensorId stable (canonical). sourceTag = monitor/gateway tag or register name.",
+    "kind: level|flow|pressure|vibration|power|temperature|status (use closest). unit: e.g. kW,kVA,V,A,Hz,pf,%,degC,state.",
+    "Delete sensors you don't have. Add more by copying an object and giving unique sensorId/sourceTag.",
+    "value here is a fallback; live values come from samples.json (samplesFile) or your gateway logic."
+  ]
+}

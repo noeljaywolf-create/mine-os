@@ -1,0 +1,20 @@
+{
+  "note": "TEMPLATE: copy as samples.json next to gateway-simple.json. Update values/epochMs as readings change (gateway re-reads each request).",
+  "samples": [
+    { "sensorId": "gen1_active_power_kw", "value": 0, "unit": "kW", "quality": 1, "epochMs": 0 },
+    { "sensorId": "gen1_apparent_power_kva", "value": 0, "unit": "kVA", "quality": 1, "epochMs": 0 },
+    { "sensorId": "gen1_voltage_v", "value": 0, "unit": "V", "quality": 1, "epochMs": 0 },
+    { "sensorId": "gen1_current_a", "value": 0, "unit": "A", "quality": 1, "epochMs": 0 },
+    { "sensorId": "gen1_frequency_hz", "value": 50, "unit": "Hz", "quality": 1, "epochMs": 0 },
+    { "sensorId": "gen1_power_factor", "value": 0, "unit": "pf", "quality": 1, "epochMs": 0 },
+    { "sensorId": "gen1_fuel_level_pct", "value": 0, "unit": "%", "quality": 1, "epochMs": 0 },
+    { "sensorId": "gen1_coolant_temp_c", "value": 0, "unit": "degC", "quality": 1, "epochMs": 0 },
+    { "sensorId": "gen1_running", "value": 0, "unit": "state", "quality": 1, "epochMs": 0 },
+    { "sensorId": "gen1_alarm", "value": 0, "unit": "state", "quality": 1, "epochMs": 0 }
+  ],
+  "instructions": [
+    "epochMs: UTC milliseconds (0 or omit -> gateway uses current time). quality: 0..1.",
+    "You can send only a subset of sensors; missing ones fall back to gateway-simple.json values.",
+    "Match sensorId to gateway-simple.json (or use sourceTag)."
+  ]
+}

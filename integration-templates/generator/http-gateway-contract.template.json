@@ -1,0 +1,24 @@
+{
+  "note": "Reference: what MINE OS Quick Connect expects from a read-only HTTP gateway (base URL). Implement these endpoints in your bridge/proxy.",
+  "baseUrlExample": "http://GATEWAY_IP:8080",
+  "GET /health": {
+    "status": "ok",
+    "time": 1710000000000
+  },
+  "GET /catalog": {
+    "sensors": [
+      { "sensorId": "gen1_active_power_kw", "sourceTag": "GEN_KW", "assetId": "gen-1", "kind": "power", "unit": "kW" }
+    ]
+  },
+  "GET /samples/latest": {
+    "samples": [
+      { "sensorId": "gen1_active_power_kw", "sourceTag": "GEN_KW", "epochMs": 1710000000000, "value": 320.5, "unit": "kW", "quality": 0.99 }
+    ],
+    "time": 1710000000000
+  },
+  "requirements": [
+    "CORS: Access-Control-Allow-Origin * (or app origin) and handle OPTIONS",
+    "epochMs: UTC milliseconds; quality: 0..1; value: number",
+    "Read-only only. MINE OS polls GET /samples/latest (and may probe /health, /catalog)"
+  ]
+}
